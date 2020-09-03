@@ -241,7 +241,6 @@ class HTMLFormatter(logging.Formatter):
         return ""
     def format_html_leading_multiprocessid(self, record):
         p = multiprocessing.current_process()
-        print(f"Current process is p={p!r}")
         if p is None:
             return ""
         if p.name == 'MainProcess':
