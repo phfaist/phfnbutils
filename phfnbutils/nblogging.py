@@ -138,7 +138,7 @@ class HTMLFormatter(logging.Formatter):
         if standard_names is None:
             self.standard_names = ['root', 'notebook']
 
-        self.icons = OrderedDict([
+        self.icons = dict([
             #(logging.ERROR, "🛑",),
             (logging.ERROR, "🚨",),
             (logging.WARNING, "⚠️",),
@@ -153,17 +153,17 @@ class HTMLFormatter(logging.Formatter):
         ]
         self.leading_separator = "&nbsp;·&nbsp;"
 
-        self.leading_final_separators = OrderedDict([
+        self.leading_final_separators = dict([
             #(logging.ERROR, "&nbsp;&nbsp;🚨&nbsp;&nbsp;"),
             (logging.WARNING, "&nbsp;·&nbsp;"),
         ])
 
-        self.trailers = OrderedDict([
+        self.trailers = dict([
             (logging.ERROR, "&emsp;🚨"),
             (logging.WARNING, ""),
         ])
 
-        self.css_par_styles = OrderedDict([
+        self.css_par_styles = dict([
             (logging.ERROR,
              r'''font-weight:500;color:rgb(200,0,0)'''),
             (logging.WARNING,
@@ -174,7 +174,7 @@ class HTMLFormatter(logging.Formatter):
              r'''font-style:normal;color:rgb(140,140,160)'''),
         ])
 
-        self.css_message_styles = OrderedDict([
+        self.css_message_styles = dict([
             (logging.ERROR,
              r'''font-size:1.1em'''),
             (logging.WARNING,
@@ -308,13 +308,13 @@ class HTMLFormatter(logging.Formatter):
             s += self.format_html_stacktrace(record)
         return s
 
-    def _find_which_from_level(self, level, t_odic):
-        # assuming t_odic is ordered in order of decreasing severity
-
+    def _find_which_from_level(self, level, t_dic):
         try:
-            return next( fmt for k,fmt in t_odic.items() if k <= level )
+            return t_dic[
+                next( k for k in sorted(t_odic.keys(), reverse=True) if k <= level )
+                ]
         except StopIteration:
-            return next(reversed(t_odic.values()))
+            return t_dic[ min(t_odic.keys()) ]
 
     def formatTime(self, record):
         """
