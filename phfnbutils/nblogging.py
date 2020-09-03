@@ -21,69 +21,114 @@ class HTMLFormatter(logging.Formatter):
     You can specify different HTML templates for different levels, and different
     CSS styles to be used by those templates.
 
-    .. py::attribute: templates
+    The class has the following attributes which may be modified to suit your
+    needs:
 
-       HTML templates to use for producing the log messages.  This attribute is
-       a list of pairs `(levelno, html_template)` where `levelno` is a logging
-       level such as `logging.DEBUG`.  The list must be sorted in increasing
-       order of log level severity.
+    .. py:attribute:: use_time
 
-       The `html_template` is a string for use with `"...".format()` (with
-       fields of the form `{field_name}`) where the field names may be any
-       attributes of the `logging.LogRecord` object that is to be formatted.
-       Additionally, a field name `css_style` can be used that is replaced by
-       the CSS style that is relevant for this level (see `css_styles`
-       attribute).
+       Whether or not to include time information in the emitted log messages
+       (`True` or `False`)
 
-       The HTML template is fed into a custom :py:class:`string.Formatter` that
-       ensures that all field substitutions are escaped suitably to be inserted
-       in HTML code.  The formatter also offers some additional formats and
-       conversions on top of the usual formatting specifications:
+    .. py:attribute:: standard_names
 
-         - ``{fieldname:add-dot}``: the value is printed followed by a centered
-           dot in a way that's suitable to be used at the beginning of a log
-           message.  If the value is empty, the entire formatting instruction
-           expands to an empty string and no dot is added, either.
+       Tuple, list, or set (or similar) of logger names that will be hidden in
+       the emitted log messages.  By default ['root', 'notebook'].
 
-         - ``{fieldname:add-brackets-dot}``: the value is put into square
-           brackets, and then followed by a centered dot as with ``:add-dot``.
-           If the value is empty, the entire formatting instruction expands to
-           an empty string with no added dot.
+    .. py:attribute:: icons
 
-         - ``{fieldname!E}``: special HTML characters in the formatted value are
-           not escaped.  It is up to you to ensure that this produces valid and
-           safe HTML code.
+       A dictionary of icons or emojis associated with log levels.  The keys are
+       logging levels such as :py:data:`logging.DEBUG` and the values are any
+       HTML code (such as a unicode emoji).
 
-       The templates list does not have to specify a template for all logging
-       levels.  When a HTML template is required for a given log level, we use
-       the last template associated with a level that is not more severe than
-       the requested level.  (Or we use the first template if the requested log
-       level is of lesser severity than the first given template.)  For
-       instance, you could use::
+       You do not have to include all log levels in this dictionary.  When
+       determining which icon to use, we iterate through the dictionary by
+       decreasing order of logging severity and we use the first icon whose log
+       level is not strictly more severe than the requested log level. (Or, if
+       the requested level is too low, use the lowest available severity icon.)
+       For instance, you can use::
 
-           html_formatter.templates = [
-               (logging.INFO,
-                '''<p style="margin:0pt;{css_style}">{message}</p>\n'''),
-               (logging.ERROR,
-                '''<p style="margin:0pt;{css_style}">*** {message} ***</p>\n'''),
-           ]
+           html_formatter.icons = {
+               logging.INFO: "⚽",
+               logging.ERROR: "🚒",
+           }
 
-       In which case the first template is used for all messages with levels
-       DEBUG, INFO and WARNING, and the second is used for the ERROR and
-       CRITICAL levels.
+       In which case "⚽" is used for all messages with levels DEBUG, INFO and
+       WARNING, and "🚒" is used for the ERROR and CRITICAL levels.
 
+    .. py:attribute:: leading_parts
 
-    .. py::attribute: css_par_styles
+       A list of "parts" that compose the leading section of a message.  This is
+       usually the icon, the time, and the logger name.  You can set this to
+       anything you like for custom message leadings.  Each item of the list is
+       a tuple `(callable, separator)` where:
+
+         - `callable` should accept one argument, the record as a
+           `logging.LogRecord` object, and return valid HTML code (escaped as
+           necessary);
+
+         - `separator` is what should be added immediately after this part to
+           separate it from other parts.  It should be one of `True` (the
+           standard leading separator, see :py:attr:`leading_separator`), `None`
+           (no separator), or a string (HTML code to use as separator).  Note
+           the separator for the last leading element is not used, and
+           :py:attr:`leading_final_separators` is used instead.
+
+    .. py:attribute:: leading_separator
+
+       The HTML code to intersperse between leading parts (unless those parts
+       specify their own separators).
+
+    .. py:attribute:: leading_final_separators
+
+       Specifies the final separator to append to the entire leading, which
+       therefore separates the leading from the main log message.  The final
+       separator is set on a per-log-level basis.
+
+       The `leading_final_separators` is a dictionary where keys are log levels
+       and values are HTML code.  You don't have to give all log levels, the
+       same rules apply as for the :py:attr:`icons` dictionary.
+
+    .. py:attribute:: trailers
     
-       This attribute should be a list of `(levelno, css_code)` with CSS styling
-       code associated to level numbers.  The list works exactly as for the
-       `templates` attributes.
+       Specify HTML code to include after the main log message, on a
+       per-log-level basis.  This is again a dictionary that works like the
+       :py:`icons` attribute.
 
-       The css style code is then available to the template as the `css_style`
-       field.
 
-    .. py::attribute: 
+    .. py:attribute:: css_par_styles
 
+       CSS style code to set on the main ``<p>`` HTML element for this log
+       message, on a per-log-level basis.  This is again a dictionary that works
+       like the :py:`icons` attribute.
+
+    .. py:attribute:: css_message_styles
+
+       CSS style code to set on the message's ``<span>`` HTML element for this
+       log message, on a per-log-level basis.  This element includes the message
+       only, and neither leading or trailer sections.  This attribute is again a
+       dictionary that works like the :py:`icons` attribute.
+
+
+    .. py:attribute:: css_time
+    
+       CSS code to use when displaying the time.  The same CSS code is used for
+       all log levels, and this attribute should simply be a string.
+
+    .. py:attribute:: css_exception
+    
+       CSS code to set on ``<pre>`` elements that display an exception.  The
+       same CSS code is used for all log levels, and this attribute should
+       simply be a string.
+
+    .. py:attribute:: css_exception
+    
+       CSS code to set on ``<pre>`` elements that display a stack trace.  The
+       same CSS code is used for all log levels, and this attribute should
+       simply be a string.
+
+    The main formatting starts with the :py:meth:`format_html()` method.  That
+    method calls the other relevant `format_html_***()` methods, as indicated in
+    those methods' documentation.
     """
     def __init__(self, use_time=True, standard_names=None):
         super().__init__()
@@ -101,11 +146,11 @@ class HTMLFormatter(logging.Formatter):
             (logging.DEBUG, "💨",),
         ])
 
-        self.leading_parts = OrderedDict([
-            ('icon', (self.format_html_leading_icon, " ") ),
-            ('time', (self.format_html_leading_time, True) ),
-            ('logger_name', (self.format_html_leading_loggername, True) ),
-        ])
+        self.leading_parts = [
+            (self.format_html_leading_icon, " "),
+            (self.format_html_leading_time, True),
+            (self.format_html_leading_loggername, True),
+        ]
         self.leading_separator = "&nbsp;·&nbsp;"
 
         self.leading_final_separators = OrderedDict([
@@ -140,8 +185,6 @@ class HTMLFormatter(logging.Formatter):
 
         self.css_exception = "color:rgb(200,0,0);"
         self.css_stacktrace = "color:rgb(200,0,0);"
-
-       
 
     def format_html_par(self, leading_html, message_html, trailer_html, record):
         """
@@ -206,7 +249,7 @@ class HTMLFormatter(logging.Formatter):
         This concatenates all the elements given in :py:attr:`leading_parts`.
         """
         join_parts = []
-        for part_fn, part_sep in self.leading_parts.values():
+        for part_fn, part_sep in self.leading_parts:
             x = part_fn(record)
             if x:
                 join_parts.append(x)
@@ -274,11 +317,19 @@ class HTMLFormatter(logging.Formatter):
             return next(reversed(t_odic.values()))
 
     def formatTime(self, record):
+        """
+        Reimplemented from :py:class:`logging.Formatter`.
+        """
         # see Python's Formatter.formatTime() source code
         ct = self.converter(record.created)
         return time.strftime(self.default_time_format, ct)
 
     def format(self, record):
+        """
+        Reimplemented from :py:class:`logging.Formatter`.  This method sets up the
+        `record` object to include the fields `message`, `asctime`, and possibly
+        `exc_text`, and then calls :py:meth:`format_htmL()`.
+        """
         # adapted from Python's Formatter.format() source code
 
         record.message = record.getMessage()
