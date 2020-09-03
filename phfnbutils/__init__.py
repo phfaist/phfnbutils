@@ -11,9 +11,6 @@ import inspect
 import datetime
 import hashlib
 
-import h5py
-import filelock
-
 import multiprocessing
 import itertools
 import random

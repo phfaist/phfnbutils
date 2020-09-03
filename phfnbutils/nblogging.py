@@ -311,10 +311,10 @@ class HTMLFormatter(logging.Formatter):
     def _find_which_from_level(self, level, t_dic):
         try:
             return t_dic[
-                next( k for k in sorted(t_odic.keys(), reverse=True) if k <= level )
+                next( k for k in sorted(t_dic.keys(), reverse=True) if k <= level )
                 ]
         except StopIteration:
-            return t_dic[ min(t_odic.keys()) ]
+            return t_dic[ min(t_dic.keys()) ]
 
     def formatTime(self, record):
         """
