@@ -18,6 +18,10 @@ import random
 from tqdm.auto import tqdm
 
 
+# see https://github.com/ipython/ipython/issues/11049#issue-306086846
+def _streams_init_pool():
+    sys.stdout.write(".\b") # need to send *something* over stdout to use ipython's display()
+    sys.stdout.flush()
 
 #
 # Tiny utility for applying a function using multiprocessing.Pool across a
@@ -39,7 +43,7 @@ def parallel_apply_func_on_input_combinations(fn, args_values_list, *, processes
     if shuffle_tasks:
         list_of_inputs = list(list_of_inputs)
         random.shuffle(list_of_inputs) # shuffle in place
-    with multiprocessing.Pool(processes=processes) as pool:
+    with multiprocessing.Pool(processes=processes, initializer=_streams_init_pool) as pool:
         for _ in tqdm(
                 pool.imap_unordered( fn, list_of_inputs ),
                 total=int(np.prod( [len(x) for x in args_values_list] ))
