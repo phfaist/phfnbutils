@@ -5,6 +5,8 @@ import time
 
 from collections import OrderedDict
 
+import multiprocessing
+
 from html import escape as escape_html
 
 try:
@@ -149,6 +151,7 @@ class HTMLFormatter(logging.Formatter):
         self.leading_parts = [
             (self.format_html_leading_icon, " "),
             (self.format_html_leading_time, True),
+            (self.format_html_leading_multiprocessid, True),
             (self.format_html_leading_loggername, True),
         ]
         self.leading_separator = "&nbsp;·&nbsp;"
@@ -185,6 +188,9 @@ class HTMLFormatter(logging.Formatter):
 
         self.css_exception = "color:rgb(200,0,0);"
         self.css_stacktrace = "color:rgb(200,0,0);"
+
+        self.rx_process_name = re.compile(r'^[A-Za-z_]*(?:Process|Worker|Thread)\-?(?P<id>\d+)$')
+        self.rx_process_format = r'⚙️\g<id>'
 
     def format_html_par(self, leading_html, message_html, trailer_html, record):
         """
@@ -233,6 +239,20 @@ class HTMLFormatter(logging.Formatter):
                 asctime_html=escape_html(record.asctime),
             )
         return ""
+    def format_html_leading_multiprocessid(self, record):
+        p = multiprocessing.current_process()
+        print(f"Current process is p={p!r}")
+        if p is None:
+            return ""
+        if p.name == 'MainProcess':
+            # we are the main process -- don't display anything here
+            return ""
+        m = self.rx_process_name.match(p.name)
+        if m is not None:
+            if callable(self.rx_process_format):
+                return escape_html(self.rx_process_format(m))
+            return escape_html(m.expand(self.rx_process_format))
+        return escape_html(p.name)
     def format_html_leading_loggername(self, record):
         """
         Get the logger name, if it is not one of the boring "standard names" (see
