@@ -211,6 +211,18 @@ class Hdf5StoreResultsAccessor:
 
         return has_error
 
+    def delete_result(self, attributes, *, dry_run=False):
+        key = self._store_key(attributes)
+
+        if key not in self._store:
+            raise ValueError("No such key for attributes {!r}".format(attributes))
+
+        if dry_run:
+            logger.info("Delete results %r, key=%r (dry run)", attributes, key)
+        else:
+            del self._store[key]
+
+
     def update_keys(self, attribute_names, *, add_default_keys=None, dry_run=False):
         """
         Checks that all result storage keys are up-to-date.  If you introduce a new
