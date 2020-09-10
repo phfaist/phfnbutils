@@ -365,7 +365,9 @@ class Hdf5StoreResultsAccessor:
 
 
 
-def compute_and_store(store_filename, *, realm=None, attributes_all=None, info=None, force_recompute=False, logger=None):
+def compute_and_store(store_filename, *,
+                      realm=None, attributes_all=None, info=None,
+                      force_recompute=False, logger=None):
     if attributes_all is None:
         attributes_all = {}
     if info is None:
