@@ -10,6 +10,7 @@ import numpy as np
 import inspect
 import datetime
 import hashlib
+import functools
 
 import h5py
 import filelock
@@ -80,41 +81,57 @@ def _unpack_attr_val(att_val):
 
 
 class Hdf5StoreResultsAccessor:
-    def __init__(self, filename):
+    """
+    TODO: Doc.....
+
+    Note: must be used in a context manager!
+    """
+    def __init__(self, filename, realm='results'):
+        super().__init__()
+
+        self.filename = filename
+        self.realm = realm
+
         self._lock_file_name = os.path.join(
             os.path.dirname(filename),
             '.' + os.path.basename(filename) + '.py_lock'
             )
 
-        self._filelock = filelock.FileLock(self._lock_file_name)
-        self._filelock.acquire()
-
-        try:
-            self._store = h5py.File(filename, 'a')
-        except Exception:
-            self._filelock.release()
-            raise
+        self._filelock = None
+        self._store = None
 
         self.store_value_filters = []
 
     def __enter__(self):
+
+        self._filelock = filelock.FileLock(self._lock_file_name)
+        self._filelock.acquire()
+
+        try:
+            self._store = h5py.File(self.filename, 'a')
+        except Exception:
+            self._filelock.release()
+            raise
+
         return self
 
     def __exit__(self, type, value, traceback):
         try:
-            self._store.close()
-            self._store = None
+            if self._store is not None:
+                self._store.close()
+                self._store = None
         finally:
-            self._filelock.release()
-            self._filelock = None
+            if self._filelock is not None:
+                self._filelock.release()
+                self._filelock = None
 
     def iterate_results(self, *, predicate=None, **kwargs):
-        grp_results = self._store['results']
+        grp_results = self._store[self.realm]
 
         predicate_attrs = None
         if predicate is not None:
             sig = inspect.signature(predicate)
-            predicate_attrs = [ param.name for param in sig.parameters ]
+            predicate_attrs = list( sig.parameters.keys() )
 
         def want_this(grp):
             if not np.all([ self._normalize_attribute_value(grp.attrs[k], keep_float=False)
@@ -122,7 +139,7 @@ class Hdf5StoreResultsAccessor:
                             for k,v in kwargs.items() ]):
                 return False
             if predicate is not None:
-                return predicate(**{k: grp.attrs[k] for k in predicate_attrs})
+                return predicate(**{k: _unpack_attr_val(grp.attrs[k]) for k in predicate_attrs})
             return True
 
         for key in grp_results.keys():
@@ -131,7 +148,7 @@ class Hdf5StoreResultsAccessor:
                 yield _Hdf5GroupProxyObject(grp)
 
     def attribute_values(self, attribute_name):
-        grp_results = self._store['results']
+        grp_results = self._store[self.realm]
         return set( _unpack_attr_val(grp.attrs[attribute_name])
                     for grp in (grp_results[key] for key in grp_results.keys()) )
         # vals = set()
@@ -160,7 +177,7 @@ class Hdf5StoreResultsAccessor:
 
         if key in self._store:
             if forbid_overwrite:
-                raise ValueError("key {!r} already exists in results, not overwriting")
+                raise ValueError("key {!r} already exists in {}, not overwriting".format(key, self.realm))
             del self._store[key]
 
         grp = self._store.create_group(key)
@@ -242,7 +259,7 @@ class Hdf5StoreResultsAccessor:
         if add_default_keys is None:
             add_default_keys = {}
 
-        grp_results = self._store['results']
+        grp_results = self._store[self.realm]
 
         for key in grp_results.keys():
             grp = grp_results[key]
@@ -341,6 +358,63 @@ class Hdf5StoreResultsAccessor:
         the_hash = m.hexdigest()
         if hash_only:
             return the_hash
-        return 'results/{}'.format(the_hash)
+        return '{}/{}'.format(self.realm, the_hash)
 
 
+
+
+
+
+def compute_and_store(store_filename, *, realm=None, attributes_all=None, info=None, force_recompute=False, logger=None):
+    if attributes_all is None:
+        attributes_all = {}
+    if info is None:
+        info = {}
+
+    if logger is None:
+        logger = logging.getLogger(__name__ + '.compute_and_store')
+
+    import phfnbutils # for TimeThis
+
+    def get_store():
+        store_kwargs = {}
+        if realm is not None:
+            store_kwargs.update(realm=realm)
+        return Hdf5StoreResultsAccessor(store_filename, **store_kwargs)
+
+    def decorate(fn):
+        fn_sig = inspect.signature(fn)
+        fn_arg_names = [p.name for p in fn_sig.parameters ]
+
+        def wrapper(inputargs):
+            kwargs = dict(zip(fn_arg_names, inputargs))
+            attributes = dict(attributes_all)
+            attributes.update(kwargs)
+            logger.debug("requested %s(%r)", fn.__name__, kwargs)
+
+            with get_store() as store:
+                if not force_recompute and store.has_result(attributes):
+                    logger.debug("Results for %r already present, not repeating computation", attributes)
+                    return
+                                                        
+            logger.info("computing for attributes = %r", attributes)
+
+            tr = {}
+            with phfnbutils.TimeThis(tr):
+                # call the function that actually computes the result
+                result = fn(**kwargs)
+
+            logger.info("Result = %r [for %r, runtime %s seconds]", result, attributes, tr.dt)
+
+            the_info = dict(info)
+            the_info.update(timethisresult=tr['timethisresult'].dt)
+            with get_store() as store:
+                store.store_result(attributes, res, info=the_info)
+
+            # signal to caller that we've computed a new result -- but this
+            # return value is probably ignored anyways
+            return True
+
+        return wrapper
+
+    return decorate

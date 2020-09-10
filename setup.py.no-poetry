@@ -57,6 +57,8 @@ setup(
 
     # files
     packages = find_packages(),
-    install_requires = [],
+    install_requires = [
+        'numpy', 'h5py', 'filelock', 'tqdm'
+    ],
     package_data = {},
 )
