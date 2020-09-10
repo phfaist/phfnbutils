@@ -434,12 +434,12 @@ class ComputeAndStore:
         dt = tr['timethisresult'].dt
 
         if result is None:
-            logger.warning("No result returned (None) for %r, after %s seconds",
+            logger.warning("No result (returned None) for %r, after %s seconds",
                            attributes, dt)
             return
 
-        logger.info("Result = %r [for %r, runtime %s seconds]",
-                    result, attributes, dt)
+        logger.debug("result = %r", result)
+        logger.info("Got result for %r [runtime: %s seconds]", attributes, dt)
 
         the_info = dict(info)
         the_info.update(timethisresult=dt)
