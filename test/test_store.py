@@ -159,3 +159,45 @@ class TestStore(unittest.TestCase):
                                   for obj in store.iterate_results()]),
                              set([(3,1,'GHZ',2.0), (4,2,'GHZ',0.5)]))
 
+
+
+class TestComputeAndStore(unittest.TestCase):
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir_name = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_compute_and_store(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        record_calls = []
+
+        @compute_and_store(storefn,
+                           realm='somethings',
+                           fixed_attributes={'state': 'GHZ'},
+                           info={'n': 10})
+        def compute_something(a, b, c):
+            record_calls.append("compute_something({},{},{})".format(a,b,c))
+            return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
+
+
+        record_calls.clear()
+        compute_something( (11, 22, 33) )
+        self.assertEqual(record_calls, ['compute_something(11,22,33)'])
+
+        record_calls.clear()
+        compute_something( (99, 88, 77) )
+        self.assertEqual(record_calls, ['compute_something(99,88,77)'])
+
+        record_calls.clear()
+        compute_something( (11, 22, 33) )
+        self.assertEqual(record_calls, [])
+
+        with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
+            self.assertEqual( set([ r['res']
+                                    for r in store.iterate_results() ]) ,
+                              set([ 112233, 998877 ]) )

@@ -86,7 +86,7 @@ class Hdf5StoreResultsAccessor:
 
     Note: must be used in a context manager!
     """
-    def __init__(self, filename, realm='results'):
+    def __init__(self, filename, *, realm='results'):
         super().__init__()
 
         self.filename = filename
@@ -366,10 +366,10 @@ class Hdf5StoreResultsAccessor:
 
 
 def compute_and_store(store_filename, *,
-                      realm=None, attributes_all=None, info=None,
+                      realm=None, fixed_attributes=None, info=None,
                       force_recompute=False, logger=None):
-    if attributes_all is None:
-        attributes_all = {}
+    if fixed_attributes is None:
+        fixed_attributes = {}
     if info is None:
         info = {}
 
@@ -386,11 +386,11 @@ def compute_and_store(store_filename, *,
 
     def decorate(fn):
         fn_sig = inspect.signature(fn)
-        fn_arg_names = [p.name for p in fn_sig.parameters ]
+        fn_arg_names = list( fn_sig.parameters.keys() )
 
         def wrapper(inputargs):
             kwargs = dict(zip(fn_arg_names, inputargs))
-            attributes = dict(attributes_all)
+            attributes = dict(fixed_attributes)
             attributes.update(kwargs)
             logger.debug("requested %s(%r)", fn.__name__, kwargs)
 
@@ -406,12 +406,15 @@ def compute_and_store(store_filename, *,
                 # call the function that actually computes the result
                 result = fn(**kwargs)
 
-            logger.info("Result = %r [for %r, runtime %s seconds]", result, attributes, tr.dt)
+            dt = tr['timethisresult'].dt
+
+            logger.info("Result = %r [for %r, runtime %s seconds]",
+                        result, attributes, dt)
 
             the_info = dict(info)
-            the_info.update(timethisresult=tr['timethisresult'].dt)
+            the_info.update(timethisresult=dt)
             with get_store() as store:
-                store.store_result(attributes, res, info=the_info)
+                store.store_result(attributes, result, info=the_info)
 
             # signal to caller that we've computed a new result -- but this
             # return value is probably ignored anyways
