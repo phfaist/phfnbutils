@@ -363,63 +363,96 @@ class Hdf5StoreResultsAccessor:
 
 
 
+class NoResultException(Exception):
+    pass
 
 
-def compute_and_store(store_filename, *,
-                      realm=None, fixed_attributes=None, info=None,
-                      force_recompute=False, logger=None):
-    if fixed_attributes is None:
-        fixed_attributes = {}
-    if info is None:
-        info = {}
 
-    if logger is None:
-        logger = logging.getLogger(__name__ + '.compute_and_store')
-
-    import phfnbutils # for TimeThis
-
-    def get_store():
-        store_kwargs = {}
-        if realm is not None:
-            store_kwargs.update(realm=realm)
-        return Hdf5StoreResultsAccessor(store_filename, **store_kwargs)
-
-    def decorate(fn):
+class ComputeAndStore:
+    def __init__(self, fn, store_filename, *,
+                 realm=None, fixed_attributes=None, info=None,
+                 force_recompute=False, logger=None):
+        self.fn = fn
+        self.fn_name = fn.__name__
         fn_sig = inspect.signature(fn)
-        fn_arg_names = list( fn_sig.parameters.keys() )
+        self.fn_arg_names = list( fn_sig.parameters.keys() )
 
-        def wrapper(inputargs):
-            kwargs = dict(zip(fn_arg_names, inputargs))
-            attributes = dict(fixed_attributes)
-            attributes.update(kwargs)
-            logger.debug("requested %s(%r)", fn.__name__, kwargs)
+        self.store_filename = store_filename
+        self.realm = realm
 
-            with get_store() as store:
-                if not force_recompute and store.has_result(attributes):
-                    logger.debug("Results for %r already present, not repeating computation", attributes)
-                    return
-                                                        
-            logger.info("computing for attributes = %r", attributes)
+        if fixed_attributes is None:
+            self.fixed_attributes = {}
+        else:
+            self.fixed_attributes = fixed_attributes
+        if info is None:
+            self.info = {}
+        else:
+            self.info = info
 
-            tr = {}
+        self.force_recompute = force_recompute
+
+        if logger is None:
+            self.logger = logging.getLogger(__name__ + '.ComputeAndStore')
+        else:
+            self.logger = logger
+
+
+    def __call__(self, inputargs):
+        fn = self.fn
+        fn_name = self.fn_name
+        fn_arg_names = self.fn_arg_names
+        fixed_attributes = self.fixed_attributes
+        force_recompute = self.force_recompute
+        info = self.info
+        logger = self.logger
+
+        import phfnbutils # TimeThis
+
+        kwargs = dict(zip(fn_arg_names, inputargs))
+        attributes = dict(fixed_attributes)
+        attributes.update(kwargs)
+        logger.debug("requested %s(%r)", fn_name, kwargs)
+
+        with self._get_store() as store:
+            if not force_recompute and store.has_result(attributes):
+                logger.debug("Results for %r already present, not repeating computation", attributes)
+                return
+
+        logger.info("computing for attributes = %r", attributes)
+
+        tr = {}
+        result = None
+        try:
             with phfnbutils.TimeThis(tr):
                 # call the function that actually computes the result
                 result = fn(**kwargs)
+        except NoResultException:
+            logger.warning("No result could be obtained for %r, after %s seconds",
+                           attributes, tr['timethisresult'].dt)
+            return False
 
-            dt = tr['timethisresult'].dt
+        dt = tr['timethisresult'].dt
 
-            logger.info("Result = %r [for %r, runtime %s seconds]",
-                        result, attributes, dt)
+        if result is None:
+            logger.warning("No result returned (None) for %r, after %s seconds",
+                           attributes, dt)
+            return
 
-            the_info = dict(info)
-            the_info.update(timethisresult=dt)
-            with get_store() as store:
-                store.store_result(attributes, result, info=the_info)
+        logger.info("Result = %r [for %r, runtime %s seconds]",
+                    result, attributes, dt)
 
-            # signal to caller that we've computed a new result -- but this
-            # return value is probably ignored anyways
-            return True
+        the_info = dict(info)
+        the_info.update(timethisresult=dt)
+        with self._get_store() as store:
+            store.store_result(attributes, result, info=the_info)
 
-        return wrapper
+        # signal to caller that we've computed a new result -- but this
+        # return value is probably ignored anyways
+        return True
 
-    return decorate
+    def _get_store(self):
+        store_kwargs = {}
+        if self.realm is not None:
+            store_kwargs.update(realm=self.realm)
+        return Hdf5StoreResultsAccessor(self.store_filename, **store_kwargs)
+

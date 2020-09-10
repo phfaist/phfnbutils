@@ -2,11 +2,15 @@ import unittest
 import tempfile
 import os.path
 
+import multiprocessing
+
 import h5py
 
 import numpy as np
 
-from phfnbutils.store import _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, compute_and_store
+from phfnbutils.store import (
+    _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore, NoResultException
+)
 
 
 class TestProxyObject(unittest.TestCase):
@@ -161,6 +165,18 @@ class TestStore(unittest.TestCase):
 
 
 
+
+
+
+def global_fn(a, b, c):
+    if a == 0:
+        return None # test that we don't store `None`
+    if b == -1:
+        raise NoResultException() # couldn't get a result -- like returning None
+    return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
+
+
+
 class TestComputeAndStore(unittest.TestCase):
 
     def setUp(self):
@@ -176,13 +192,18 @@ class TestComputeAndStore(unittest.TestCase):
 
         record_calls = []
 
-        @compute_and_store(storefn,
-                           realm='somethings',
-                           fixed_attributes={'state': 'GHZ'},
-                           info={'n': 10})
-        def compute_something(a, b, c):
+        def fn(a, b, c):
             record_calls.append("compute_something({},{},{})".format(a,b,c))
+            if a == 0:
+                return None # test that we don't store `None`
+            if b == -1:
+                raise NoResultException() # couldn't get a result -- like returning None
             return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
+
+        compute_something = ComputeAndStore(fn, storefn,
+                                            realm='somethings',
+                                            fixed_attributes={'state': 'GHZ'},
+                                            info={'n': 10})
 
 
         record_calls.clear()
@@ -197,7 +218,45 @@ class TestComputeAndStore(unittest.TestCase):
         compute_something( (11, 22, 33) )
         self.assertEqual(record_calls, [])
 
+        record_calls.clear()
+        compute_something( (0, 0, 0) )
+        self.assertEqual(record_calls, ['compute_something(0,0,0)'])
+
+        record_calls.clear()
+        compute_something( (0, -1, 0) )
+        self.assertEqual(record_calls, ['compute_something(0,-1,0)'])
+
         with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 998877 ]) )
+
+
+
+    def test_in_multiprocessing(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        compute_something = ComputeAndStore(global_fn, storefn,
+                                            realm='yadayada',
+                                            fixed_attributes={'state': 'GHZ'},
+                                            info={'n': 10})
+
+        list_of_inputs = [
+            (11, 22, 33),
+            (44, 55, 66),
+            (77, 88, 99),
+            ( 1,  2,  3),
+            ( 0,  0,  0),
+            ( 0, -1,  0),
+        ]
+            
+        with multiprocessing.Pool(processes=4) as pool:
+            for _ in pool.imap_unordered( compute_something, list_of_inputs ):
+                pass
+
+        with Hdf5StoreResultsAccessor(storefn, realm='yadayada') as store:
+            self.assertEqual( set([ r['res']
+                                    for r in store.iterate_results() ]) ,
+                              set([ 112233, 445566, 778899, 10203 ]) )
+
