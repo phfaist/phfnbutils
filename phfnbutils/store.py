@@ -423,7 +423,7 @@ class ComputeAndStore:
         tr = {}
         result = None
         try:
-            with phfnbutils.TimeThis(tr):
+            with phfnbutils.TimeThis(tr, silent=True):
                 # call the function that actually computes the result
                 result = fn(**kwargs)
         except NoResultException as e:
