@@ -426,9 +426,9 @@ class ComputeAndStore:
             with phfnbutils.TimeThis(tr):
                 # call the function that actually computes the result
                 result = fn(**kwargs)
-        except NoResultException:
-            logger.warning("No result could be obtained for %r, after %s seconds",
-                           attributes, tr['timethisresult'].dt)
+        except NoResultException as e:
+            logger.warning("No result could be obtained for %r, after %s seconds: %r",
+                           attributes, tr['timethisresult'].dt, e)
             return False
 
         dt = tr['timethisresult'].dt
