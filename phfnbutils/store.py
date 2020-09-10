@@ -430,13 +430,16 @@ class ComputeAndStore:
             logger.warning("No result could be obtained for %r, after %s seconds: %r",
                            attributes, tr['timethisresult'].dt, e)
             return False
+        except Exception as e:
+            logger.warning("Exception while computing result!\n", exc_info=True)
+            return False
 
         dt = tr['timethisresult'].dt
 
         if result is None:
             logger.warning("No result (returned None) for %r, after %s seconds",
                            attributes, dt)
-            return
+            return False
 
         logger.debug("result = %r", result)
         logger.info("Got result for %r [runtime: %s seconds]", attributes, dt)
