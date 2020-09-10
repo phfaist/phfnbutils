@@ -431,7 +431,7 @@ class ComputeAndStore:
                            attributes, tr['timethisresult'].dt, e)
             return False
         except Exception as e:
-            logger.warning("Exception while computing result!\n", exc_info=True)
+            logger.error("Exception while computing result!\n", exc_info=True)
             return False
 
         dt = tr['timethisresult'].dt
