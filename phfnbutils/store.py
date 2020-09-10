@@ -441,7 +441,22 @@ class ComputeAndStore:
                            attributes, dt)
             return False
 
-        logger.debug("result = %r", result)
+        class _ShowResult:
+            def __init__(self, result):
+                self.result = result
+            def __str__(self):
+                return _showresult(self.result)
+        def _showresult(result, short=False):
+            if isinstance(result, dict) and not short:
+                return '{' + ",".join(
+                    "{}={}".format(k, _showresult(v, short=True))
+                    for k,v in result.items()
+                ) + '}'
+            if result is None or isinstance(result, (int, float, bool, str, bytes)):
+                return str(result)
+            return '<{}>'.format(result.__class__.__name__)
+
+        logger.debug("result: %s", _ShowResult(result))
         logger.info("Got result for %r [runtime: %s seconds]", attributes, dt)
 
         the_info = dict(info)

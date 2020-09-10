@@ -6,6 +6,8 @@ import multiprocessing
 
 import h5py
 
+import logging
+
 import numpy as np
 
 from phfnbutils.store import (
@@ -260,3 +262,8 @@ class TestComputeAndStore(unittest.TestCase):
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 445566, 778899, 10203 ]) )
 
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    unittest.main()
