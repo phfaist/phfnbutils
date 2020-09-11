@@ -15,6 +15,7 @@ from phfnbutils.store import (
 )
 
 
+
 class TestProxyObject(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -174,7 +175,12 @@ def global_fn(a, b, c):
     if a == 0:
         return None # test that we don't store `None`
     if b == -1:
-        raise NoResultException() # couldn't get a result -- like returning None
+        # couldn't get a result -- like returning None, but with a specific
+        # message
+        raise NoResultException("No convergence")
+    if c is None:
+        # test that we can handle general exceptions in the function
+        raise ValueError("Invalid input: c is None")
     return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
 
 
@@ -200,6 +206,9 @@ class TestComputeAndStore(unittest.TestCase):
                 return None # test that we don't store `None`
             if b == -1:
                 raise NoResultException() # couldn't get a result -- like returning None
+            if c is None:
+                # test that we can handle general exceptions in the function
+                raise ValueError("Invalid input: c is None")
             return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
 
         compute_something = ComputeAndStore(fn, storefn,
@@ -228,6 +237,11 @@ class TestComputeAndStore(unittest.TestCase):
         compute_something( (0, -1, 0) )
         self.assertEqual(record_calls, ['compute_something(0,-1,0)'])
 
+        with self.assertLogs('phfnbutils.store', level=logging.ERROR):
+            record_calls.clear()
+            compute_something( (1, 1, None) )
+            self.assertEqual(record_calls, ['compute_something(1,1,None)'])
+
         with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
@@ -251,8 +265,20 @@ class TestComputeAndStore(unittest.TestCase):
             ( 1,  2,  3),
             ( 0,  0,  0),
             ( 0, -1,  0),
+            ( 1,  1,  None), # ValueError
         ]
             
+        # Note that the ValueError caused by input (1,1,None) is not re-raised,
+        # it is only reported in the logs as an error.  This is to prevent the
+        # exception from interrupting all the other computations in a lengthy
+        # job.  Check for that:
+        #
+        #with self.assertLogs('phfnbutils.store', level=logging.ERROR):
+        #
+        # ### <-- this doesn't seem to work with log messages emitted inside a
+        # ### mulitprocessing worker; ignore this check for now, we already test
+        # ### that in the non-multiprocessing test
+
         with multiprocessing.Pool(processes=4) as pool:
             for _ in pool.imap_unordered( compute_something, list_of_inputs ):
                 pass
@@ -261,7 +287,6 @@ class TestComputeAndStore(unittest.TestCase):
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 445566, 778899, 10203 ]) )
-
 
 
 if __name__ == '__main__':
