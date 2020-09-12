@@ -168,20 +168,20 @@ class HTMLFormatter(logging.Formatter):
 
         self.css_par_styles = dict([
             (logging.ERROR,
-             r'''font-weight:500;color:rgb(200,0,0)'''),
+             r'''font-weight:500;color:rgb(200,0,0);'''),
             (logging.WARNING,
-             r'''font-weight:500;color:rgb(160,100,0)'''),
+             r'''font-weight:500;color:rgb(160,100,0);'''),
             (logging.INFO,
-             r'''font-style:normal;color:rgb(40,40,80)'''),
+             r'''font-style:normal;color:rgb(40,40,80);'''),
             (logging.DEBUG,
-             r'''font-style:normal;color:rgb(140,140,160)'''),
+             r'''font-style:normal;color:rgb(140,140,160);'''),
         ])
 
         self.css_message_styles = dict([
             (logging.ERROR,
-             r'''font-size:1.1em'''),
+             r'''font-size:1.1em;white-space:pre-wrap;'''),
             (logging.WARNING,
-             r''''''),
+             r'''white-space:pre-wrap;'''),
         ])
 
         self.css_time = "font-size:0.8em;font-weight:300;"
