@@ -238,6 +238,7 @@ class Hdf5StoreResultsAccessor:
             logger.info("Delete results %r, key=%r (dry run)", attributes, key)
         else:
             del self._store[key]
+            logger.info("Deleted results %r, key=%r", attributes, key)
 
 
     def update_keys(self, attribute_names, *, add_default_keys=None, dry_run=False):
@@ -460,7 +461,7 @@ class ComputeAndStore:
             )
             return False
         except Exception as e:
-            logger.error("Exception while computing result!\n", exc_info=True)
+            logger.error("Exception while computing result!", exc_info=True)
             return False
 
         dt = tr['timethisresult'].dt
