@@ -15,6 +15,8 @@ from phfnbutils.store import (
 )
 
 
+# ------------------------------------------------------------------------------
+
 
 class TestProxyObject(unittest.TestCase):
     def setUp(self):
@@ -56,7 +58,8 @@ class TestProxyObject(unittest.TestCase):
         self.assertTrue(np.all(proxy1.get('data', None) == np.arange(10)))
         self.assertIsNone(proxy1.get('data_does_not_exist', None))
         self.assertTrue(np.all(proxy1.get('group2', {}).get('data2', None) == np.zeros((3,2))))
-        self.assertTrue(np.all(_Hdf5GroupProxyObject(handle['group1/group2']).get('data2', 13) == np.zeros((3,2))))
+        self.assertTrue(np.all(_Hdf5GroupProxyObject(handle['group1/group2']).get('data2', 13)
+                               == np.zeros((3,2))))
         self.assertEqual(proxy1['group2'].get('attribute_2', 1000), 32)
         self.assertEqual(proxy1['group2'].get('attribute_1', 'hi there'), 'Hello world') # as string
         self.assertEqual(proxy1['group2'].get('attribute_zzzz', 'hi there'), 'hi there')
@@ -80,9 +83,8 @@ class TestProxyObject(unittest.TestCase):
         proxy1 = _Hdf5GroupProxyObject(handle['group1'])
 
         self.assertEqual( proxy1.all_attrs(), {} )
-        self.assertEqual( proxy1['group2'].all_attrs(), {'attribute_1': 'Hello world', 'attribute_2': 32} )
-
-
+        self.assertEqual( proxy1['group2'].all_attrs(),
+                          {'attribute_1': 'Hello world', 'attribute_2': 32} )
 
     def test_proxy_str(self):
         handle = self.handle
@@ -90,6 +92,19 @@ class TestProxyObject(unittest.TestCase):
         self.assertEqual(str(proxy1), "HDF5 group {data: <Dataset>, group2: <Group>}")
         self.assertEqual(str(proxy1['group2']),
                          "HDF5 group {attribute_1: Hello world, attribute_2: 32, data2: <Dataset>}")
+
+    def test_proxy_value_equals(self):
+        handle = self.handle
+        proxy1 = _Hdf5GroupProxyObject(handle['group1'])
+        self.assertTrue(proxy1.value_equals('data', [0,1,2,3,4,5,6,7,8,9]))
+        self.assertTrue(proxy1['group2'].value_equals('attribute_2', 32))
+        self.assertTrue(proxy1['group2'].value_equals('attribute_1', 'Hello world'))
+        self.assertTrue(proxy1['group2'].value_equals('data2', np.zeros((3,2,))))
+
+
+
+
+# ------------------------------------------------------------------------------
 
 
 
@@ -176,7 +191,7 @@ class TestStore(unittest.TestCase):
                              set([(3,1,'GHZ',2.0), (4,2,'GHZ',0.5)]))
 
 
-    def test_access_inconsistent_keys(self):
+    def test_iterate_results_inconsistent_keys(self):
 
         storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
 
@@ -204,6 +219,40 @@ class TestStore(unittest.TestCase):
             self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
                                   for obj in store.iterate_results(predicate=predicate_method_direct)]),
                              set([(4,2,'GHZ',0.5)]))
+
+    def test_iterate_results_by_values(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+            store.store_result( {'n':  12, 'k': 5, 'state': 'GHZ', 'method': 'indirect'},
+                                { 'result1': np.ones((3,4)),
+                                  'kkk': np.array([5,], dtype=np.int32),
+                                  'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 4} )
+
+        # can query with `None` to test for absence of key 
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'],)
+                                  for obj in store.iterate_results(method=None)]),
+                             set([(3,1,'GHZ',2.0,)]))
+
+        # can query with predicate w/ array-vs-scalar matching
+        def predicate_kkk(kkk):
+            return (kkk == 5)
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'],)
+                                  for obj in store.iterate_results(predicate=predicate_kkk)]),
+                             set([(5,4,'GHZ',.5,)]))
+
 
     def test_delete_result(self):
         
@@ -281,6 +330,12 @@ class TestStore(unittest.TestCase):
                                   for obj in store.iterate_results()]),
                              set([(6,3,'Bell',2.0)]))
 
+
+
+
+
+
+# ------------------------------------------------------------------------------
 
 
 def global_fn(a, b, c):

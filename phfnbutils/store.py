@@ -67,6 +67,17 @@ class _Hdf5GroupProxyObject:
     def _unpack_attr_val(self, att_val):
         return _unpack_attr_val(att_val) # call global method
 
+    def value_equals(self, key, test_value):
+        val = self.get(key, None)
+        if val is None:
+            return (test_value is None)
+        if isinstance(val, np.ndarray) or isinstance(test_value, np.ndarray):
+            return np.all(val == test_value)
+        if _normalize_attribute_value_global(val, keep_float=False) \
+           != _normalize_attribute_value_global(test_value, keep_float=False):
+            return False
+        return True
+
     def __repr__(self):
         return '_Hdf5GroupProxyObject('+repr(self.grp)+')'
 
@@ -98,6 +109,39 @@ def _unpack_attr_val(att_val):
     #    # if it's a scalar, return the bare scalar and not an ndarray
     #    return att_val[()]
     return att_val
+
+
+
+def _normalize_attribute_value_global(
+        value, *,
+        normalize_string=_normalize_attribute_value_string,
+        keep_float=True
+):
+    t = type(value)
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _normalize_attribute_value_string(value)
+    if isinstance(value, bytes):
+        # bytes and str are treated the same, as ASCII strings.  For storage
+        # of raw binary data you'll want to store a dataset of some kind
+        # e.g. with numpy.
+        return value
+    if isinstance(value, int) or np.issubdtype(t, np.integer):
+        return int(value)
+    if isinstance(value, float) or np.issubdtype(t, np.floating):
+        if keep_float:
+            return value
+        else:
+            return _normalize_attribute_value_string( '{:0.8g}'.format(value) )
+    if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
+        return _normalize_attribute_value_string(value.isoformat())
+    if isinstance(value, (datetime.timedelta,)):
+        return _normalize_attribute_value_string("total_seconds={:.06g}".format(value.total_seconds()))
+
+    raise ValueError("Cannot encode {!r} for HDF5 attribute storage, unknown type".format(value))
+
+
 
 
 class Hdf5StoreResultsAccessor:
@@ -153,19 +197,19 @@ class Hdf5StoreResultsAccessor:
             sig = inspect.signature(predicate)
             predicate_attrs = list( sig.parameters.keys() )
 
-        def want_this(grp):
+        def want_this(grpiface):
             for k,v in kwargs.items():
-                if self._normalize_attribute_value(grp.attrs.get(k, None), keep_float=False) \
-                   != self._normalize_attribute_value(v, keep_float=False):
+                if not grpiface.value_equals(k, v):
                     return False
             if predicate is not None:
-                return predicate(**{k: _unpack_attr_val(grp.attrs.get(k, None)) for k in predicate_attrs})
+                return predicate(**{k: _unpack_attr_val(grpiface.get(k, None)) for k in predicate_attrs})
             return True
 
         for key in grp_results.keys():
             grp = grp_results[key]
-            if want_this(grp):
-                yield _Hdf5GroupProxyObject(grp)
+            grpiface = _Hdf5GroupProxyObject(grp)
+            if want_this(grpiface):
+                yield grpiface
 
     def attribute_values(self, attribute_name):
         grp_results = self._store[self.realm]
@@ -352,30 +396,8 @@ class Hdf5StoreResultsAccessor:
 
         logger.debug("Keys and attributes renamed successfully.")
 
-    def _normalize_attribute_value(self, value, *, normalize_string=_normalize_attribute_value_string, keep_float=True):
-        t = type(value)
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return _normalize_attribute_value_string(value)
-        if isinstance(value, bytes):
-            # bytes and str are treated the same, as ASCII strings.  For storage
-            # of raw binary data you'll want to store a dataset of some kind
-            # e.g. with numpy.
-            return value
-        if isinstance(value, int) or np.issubdtype(t, np.integer):
-            return int(value)
-        if isinstance(value, float) or np.issubdtype(t, np.floating):
-            if keep_float:
-                return value
-            else:
-                return _normalize_attribute_value_string( '{:0.8g}'.format(value) )
-        if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
-            return _normalize_attribute_value_string(value.isoformat())
-        if isinstance(value, (datetime.timedelta,)):
-            return _normalize_attribute_value_string("total_seconds={:.06g}".format(value.total_seconds()))
-
-        raise ValueError("Cannot encode {!r} for HDF5 attribute storage, unknown type".format(value))
+    def _normalize_attribute_value(self, value, **kwargs):
+        return _normalize_attribute_value_global(value, **kwargs)
 
     def _store_key(self, attributes, *, hash_only=False):
         m = hashlib.sha1()
@@ -392,6 +414,7 @@ class Hdf5StoreResultsAccessor:
         if hash_only:
             return the_hash
         return '{}/{}'.format(self.realm, the_hash)
+
 
 
 
