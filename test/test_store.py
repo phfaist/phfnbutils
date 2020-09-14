@@ -205,7 +205,8 @@ class TestComputeAndStore(unittest.TestCase):
             if a == 0:
                 return None # test that we don't store `None`
             if b == -1:
-                raise NoResultException() # couldn't get a result -- like returning None
+                # couldn't get a result -- like returning None
+                raise NoResultException("this is why")
             if c is None:
                 # test that we can handle general exceptions in the function
                 raise ValueError("Invalid input: c is None")
@@ -229,13 +230,15 @@ class TestComputeAndStore(unittest.TestCase):
         compute_something( (11, 22, 33) )
         self.assertEqual(record_calls, [])
 
-        record_calls.clear()
-        compute_something( (0, 0, 0) )
-        self.assertEqual(record_calls, ['compute_something(0,0,0)'])
+        with self.assertLogs('phfnbutils.store', level=logging.WARNING):
+            record_calls.clear()
+            compute_something( (0, 0, 0) )
+            self.assertEqual(record_calls, ['compute_something(0,0,0)'])
 
-        record_calls.clear()
-        compute_something( (0, -1, 0) )
-        self.assertEqual(record_calls, ['compute_something(0,-1,0)'])
+        with self.assertLogs('phfnbutils.store', level=logging.WARNING):
+            record_calls.clear()
+            compute_something( (1, -1, 0) )
+            self.assertEqual(record_calls, ['compute_something(1,-1,0)'])
 
         with self.assertLogs('phfnbutils.store', level=logging.ERROR):
             record_calls.clear()
@@ -264,7 +267,7 @@ class TestComputeAndStore(unittest.TestCase):
             (77, 88, 99),
             ( 1,  2,  3),
             ( 0,  0,  0),
-            ( 0, -1,  0),
+            ( 1, -1,  0),
             ( 1,  1,  None), # ValueError
         ]
             

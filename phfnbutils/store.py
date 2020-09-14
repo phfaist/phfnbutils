@@ -368,6 +368,32 @@ class NoResultException(Exception):
 
 
 
+class _ShowValueShort:
+    def __init__(self, result):
+        self.result = result
+    def __str__(self):
+        return _showresult(self.result)
+    def __repr__(self):
+        return repr(self.result)
+
+def _showresult(result, short=False):
+    if isinstance(result, dict) and not short:
+        return '{' + ",".join(
+            "{}={}".format(k, _showresult(v, short=True))
+            for k,v in result.items()
+        ) + '}'
+    if short and isinstance(result, (np.ndarray,)):
+        # print short version of ndarray
+        with np.printoptions(precision=4,threshold=8,linewidth=9999,):
+            return str(result)
+    if isinstance(result, (float,)) or np.issubdtype(np.dtype(type(result)), np.floating):
+        return "%.4g"%(result)
+    if result is None or isinstance(result, (int, bool, str, bytes)):
+        return str(result)
+    return '<{}>'.format(result.__class__.__name__)
+
+
+
 class ComputeAndStore:
     def __init__(self, fn, store_filename, *,
                  realm=None, fixed_attributes=None, info=None,
@@ -415,10 +441,11 @@ class ComputeAndStore:
 
         with self._get_store() as store:
             if not force_recompute and store.has_result(attributes):
-                logger.debug("Results for %r already present, not repeating computation", attributes)
+                logger.debug("Results for %s already present, not repeating computation",
+                             _ShowValueShort(attributes))
                 return
 
-        logger.info("computing for attributes = %r", attributes)
+        logger.info("computing for attributes = %s", _ShowValueShort(attributes))
 
         tr = {}
         result = None
@@ -427,8 +454,10 @@ class ComputeAndStore:
                 # call the function that actually computes the result
                 result = fn(**kwargs)
         except NoResultException as e:
-            logger.warning("No result could be obtained for %r, after %s seconds: %r",
-                           attributes, tr['timethisresult'].dt, e)
+            logger.warning(
+                "No result (NoResultException): %s  [for %s after %s seconds]",
+                e, _ShowValueShort(attributes), tr['timethisresult'].dt,
+            )
             return False
         except Exception as e:
             logger.error("Exception while computing result!\n", exc_info=True)
@@ -437,27 +466,12 @@ class ComputeAndStore:
         dt = tr['timethisresult'].dt
 
         if result is None:
-            logger.warning("No result (returned None) for %r, after %s seconds",
-                           attributes, dt)
+            logger.warning("No result (returned None) for %s, after %s seconds",
+                           _ShowValueShort(attributes), dt)
             return False
 
-        class _ShowResult:
-            def __init__(self, result):
-                self.result = result
-            def __str__(self):
-                return _showresult(self.result)
-        def _showresult(result, short=False):
-            if isinstance(result, dict) and not short:
-                return '{' + ",".join(
-                    "{}={}".format(k, _showresult(v, short=True))
-                    for k,v in result.items()
-                ) + '}'
-            if result is None or isinstance(result, (int, float, bool, str, bytes)):
-                return str(result)
-            return '<{}>'.format(result.__class__.__name__)
-
-        logger.debug("result: %s", _ShowResult(result))
-        logger.info("Got result for %r [runtime: %s seconds]", attributes, dt)
+        logger.debug("result: %s", _ShowValueShort(result))
+        logger.info("Got result for %s [runtime: %s seconds]", _ShowValueShort(attributes), dt)
 
         the_info = dict(info)
         the_info.update(timethisresult=dt)
