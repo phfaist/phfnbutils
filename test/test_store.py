@@ -84,6 +84,15 @@ class TestProxyObject(unittest.TestCase):
 
 
 
+    def test_proxy_str(self):
+        handle = self.handle
+        proxy1 = _Hdf5GroupProxyObject(handle['group1'])
+        self.assertEqual(str(proxy1), "HDF5 group {data: <Dataset>, group2: <Group>}")
+        self.assertEqual(str(proxy1['group2']),
+                         "HDF5 group {attribute_1: Hello world, attribute_2: 32, data2: <Dataset>}")
+
+
+
 class TestStore(unittest.TestCase):
 
     def setUp(self):
@@ -167,7 +176,110 @@ class TestStore(unittest.TestCase):
                              set([(3,1,'GHZ',2.0), (4,2,'GHZ',0.5)]))
 
 
+    def test_access_inconsistent_keys(self):
 
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                                  for obj in store.iterate_results(method='direct')]),
+                             set([(4,2,'GHZ',0.5)]))
+
+
+        def predicate_method_direct(method):
+            return method == 'direct'
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                                  for obj in store.iterate_results(predicate=predicate_method_direct)]),
+                             set([(4,2,'GHZ',0.5)]))
+
+    def test_delete_result(self):
+        
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            store.delete_result({'n': 12, 'k': 4, 'state': 'GHZ',
+                                 'method': 'direct'})
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                                  for obj in store.iterate_results()]),
+                             set([(3,1,'GHZ',2.0)]))
+
+
+    def test_delete_results(self):
+        
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+            store.store_result( {'n':  10, 'k': 6, 'state': 'Bell'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 3} )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            store.delete_results(n=12)
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                                  for obj in store.iterate_results()]),
+                             set([(6,3,'Bell',2.0)]))
+
+    def test_delete_results_with_predicate(self):
+        
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+            store.store_result( {'n':  10, 'k': 6, 'state': 'Bell'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 3} )
+
+        def predicate(n):
+            return (n == 12)
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            store.delete_results(predicate=predicate)
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                                  for obj in store.iterate_results()]),
+                             set([(6,3,'Bell',2.0)]))
 
 
 
@@ -249,7 +361,6 @@ class TestComputeAndStore(unittest.TestCase):
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 998877 ]) )
-
 
 
     def test_in_multiprocessing(self):

@@ -70,6 +70,26 @@ class _Hdf5GroupProxyObject:
     def __repr__(self):
         return '_Hdf5GroupProxyObject('+repr(self.grp)+')'
 
+    def __str__(self):
+        ds = {k: str(v) for k, v in self.all_attrs().items() }
+        for k in self.keys_children():
+            v = self.grp[k]
+            ds[k] = '<{}>'.format(type(v).__name__)
+        return 'HDF5 group {' + ', '.join('{}: {}'.format(k,vstr) for k,vstr in ds.items()) + '}'
+
+    def hdf5_group(self):
+        """
+        Return the group object in the HDF5 data structure, giving you direct access
+        to the :py:mod:`h5py` API in case you need it.
+        """
+        return self.grp
+
+    def hdf5_key(self):
+        """
+        Return the key in the HDF5 data structure where this group is located.
+        """
+        return self.grp.name
+
 
 def _unpack_attr_val(att_val):
     if isinstance(att_val, bytes):
@@ -134,12 +154,12 @@ class Hdf5StoreResultsAccessor:
             predicate_attrs = list( sig.parameters.keys() )
 
         def want_this(grp):
-            if not np.all([ self._normalize_attribute_value(grp.attrs[k], keep_float=False)
-                            == self._normalize_attribute_value(v, keep_float=False)
-                            for k,v in kwargs.items() ]):
-                return False
+            for k,v in kwargs.items():
+                if self._normalize_attribute_value(grp.attrs.get(k, None), keep_float=False) \
+                   != self._normalize_attribute_value(v, keep_float=False):
+                    return False
             if predicate is not None:
-                return predicate(**{k: _unpack_attr_val(grp.attrs[k]) for k in predicate_attrs})
+                return predicate(**{k: _unpack_attr_val(grp.attrs.get(k, None)) for k in predicate_attrs})
             return True
 
         for key in grp_results.keys():
@@ -213,8 +233,8 @@ class Hdf5StoreResultsAccessor:
                     newgrp = grp.create_group(k)
                     has_error = self._store_result_dict_value(newgrp, v)
                 elif isinstance(v, (np.ndarray, int, float)) \
-                     or np.issubdtype(type(v), np.integer) \
-                     or np.issubdtype(type(v), np.floating):
+                     or np.issubdtype(np.dtype(type(v)), np.integer) \
+                     or np.issubdtype(np.dtype(type(v)), np.floating):
                     dset = grp.create_dataset(k, data=v)
                 elif isinstance(v, (datetime.date, datetime.time, datetime.datetime)):
                     grp.attrs[k] = v.isoformat().encode('ascii')
@@ -239,6 +259,18 @@ class Hdf5StoreResultsAccessor:
         else:
             del self._store[key]
             logger.info("Deleted results %r, key=%r", attributes, key)
+
+    def delete_results(self, *, dry_run=False, **kwargs):
+        keys_to_delete = []
+        for it in self.iterate_results(**kwargs):
+            keys_to_delete.append(it.hdf5_key())
+
+        for key in keys_to_delete:
+            if dry_run:
+                logger.info("Delete results %r (dry run)", key)
+            else:
+                del self._store[key]
+                logger.info("Deleted results %r", key)
 
 
     def update_keys(self, attribute_names, *, add_default_keys=None, dry_run=False):
@@ -373,14 +405,14 @@ class _ShowValueShort:
     def __init__(self, result):
         self.result = result
     def __str__(self):
-        return _showresult(self.result)
+        return _showvalue(self.result)
     def __repr__(self):
         return repr(self.result)
 
-def _showresult(result, short=False):
+def _showvalue(result, short=False):
     if isinstance(result, dict) and not short:
         return '{' + ",".join(
-            "{}={}".format(k, _showresult(v, short=True))
+            "{}={}".format(k, _showvalue(v, short=True))
             for k,v in result.items()
         ) + '}'
     if short and isinstance(result, (np.ndarray,)):
