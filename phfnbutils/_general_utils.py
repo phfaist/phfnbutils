@@ -25,7 +25,13 @@ def _streams_init_pool():
 # Tiny utility for applying a function using multiprocessing.Pool across a
 # cartesian product of input arguments, with progress bar
 #
-def parallel_apply_func_on_input_combinations(fn, args_values_list, *, processes=None, shuffle_tasks=True):
+def parallel_apply_func_on_input_combinations(
+        fn,
+        args_values_list,
+        *,
+        processes=None,
+        shuffle_tasks=True
+):
     # Notes: (convert to docstring, TODO)
     #
     # - fn should accept a single argument, a tuple of arguments

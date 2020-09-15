@@ -474,6 +474,7 @@ class TestComputeAndStore(unittest.TestCase):
                               set([ (112233, 22), (998877, 198) ]) )
 
 
+
     def test_in_multiprocessing(self):
 
         storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
@@ -512,6 +513,66 @@ class TestComputeAndStore(unittest.TestCase):
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 445566, 778899, 10203 ]) )
+
+
+    def test_with_decode_inputargs(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        def fn(a, b, c):
+            if a == 0:
+                return None # test that we don't store `None`
+            if b == -1:
+                # couldn't get a result -- like returning None
+                raise NoResultException("this is why")
+            if c is None:
+                # test that we can handle general exceptions in the function
+                raise ValueError("Invalid input: c is None")
+            return {'res': a*10000 + b*100 + c, 'values': np.array([a,b,c])}
+
+        def decode_inputargs(inputargs, use_dict=False):
+            ((b,c),a) = inputargs
+            if use_dict:
+                return {'a': a, 'b': b, 'c': c}
+            return (a, b, c)
+
+        compute_something = ComputeAndStore(fn, storefn,
+                                            realm='foobar',
+                                            fixed_attributes={'state': 'bliss'},
+                                            decode_inputargs=lambda a: decode_inputargs(a),
+                                            info={'n': 10})
+
+        list_of_inputs = [
+            ( (22, 33), 11 ),
+            ( (55, 66), 44),
+            ( (88, 99), 77),
+        ]
+            
+        for input in list_of_inputs:
+            compute_something(input)
+
+        with Hdf5StoreResultsAccessor(storefn, realm='foobar') as store:
+            self.assertEqual( set([ r['res']
+                                    for r in store.iterate_results() ]) ,
+                              set([ 112233, 445566, 778899 ]) )
+
+
+        compute_something2 = ComputeAndStore(fn, storefn,
+                                            realm='foobar2',
+                                            fixed_attributes={'state': 'bliss'},
+                                            decode_inputargs=lambda a: decode_inputargs(a, use_dict=True),
+                                            info={'n': 10})
+
+        for input in list_of_inputs:
+            compute_something2(input)
+
+        with Hdf5StoreResultsAccessor(storefn, realm='foobar2') as store:
+            self.assertEqual( set([ r['res']
+                                    for r in store.iterate_results() ]) ,
+                              set([ 112233, 445566, 778899 ]) )
+
+
+
 
 
 if __name__ == '__main__':

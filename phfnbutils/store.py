@@ -473,8 +473,12 @@ def _call_with_accepted_kwargs(fun, kwargs):
 
 class ComputeAndStore:
     def __init__(self, fn, store_filename, *,
-                 realm=None, fixed_attributes=None, info=None,
-                 force_recompute=False, logger=None):
+                 realm=None,
+                 fixed_attributes=None,
+                 info=None,
+                 decode_inputargs=None,
+                 force_recompute=False,
+                 logger=None):
         self.fn = fn
         self.fn_name = fn.__name__
         fn_sig = inspect.signature(fn)
@@ -491,6 +495,11 @@ class ComputeAndStore:
             self.info = {}
         else:
             self.info = info
+
+        if decode_inputargs is None:
+            self.decode_inputargs = None
+        else:
+            self.decode_inputargs = decode_inputargs
 
         self.force_recompute = force_recompute
 
@@ -511,7 +520,20 @@ class ComputeAndStore:
 
         import phfnbutils # TimeThis
 
-        kwargs = dict(zip(fn_arg_names, inputargs))
+        # we might have to decode the inputargs, in case they have attribute
+        # values encoded in some way (e.g. dependent attributes zipped together)
+        kwargs = None
+        decoded_inputargs = inputargs
+        if self.decode_inputargs is not None:
+            decoded_inputargs = self.decode_inputargs(inputargs)
+        if isinstance(decoded_inputargs, dict):
+            kwargs = decoded_inputargs
+        else:
+            if len(decoded_inputargs) != len(fn_arg_names):
+                raise ValueError("Can't match (decoded) input arguments %r to function parameters %r"
+                                 % (decoded_inputargs, fn_arg_names))
+            kwargs = dict(zip(fn_arg_names, decoded_inputargs))
+
         attributes = dict(fixed_attributes)
         attributes.update(kwargs)
         logger.debug("requested %s(%r)", fn_name, kwargs)
