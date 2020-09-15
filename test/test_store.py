@@ -266,6 +266,49 @@ class TestStore(unittest.TestCase):
                                   for obj in store.iterate_results(predicate=predicate_kkk)]),
                              set([(5,4,'GHZ',.5,)]))
 
+    def test_attribute_values(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        # works when empty
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual( store.attribute_values('method') ,
+                              set() )
+
+        # store some results
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            # store.store_result(attributes, result, ...)
+            store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
+                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                info={'dt': 1} )
+            store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
+                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 2} )
+            store.store_result( {'n':  12, 'k': 5, 'state': 'GHZ', 'method': 'indirect'},
+                                { 'result1': np.ones((3,4)),
+                                  'kkk': np.array([5,], dtype=np.int32),
+                                  'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                info={'dt': 4} )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                store.attribute_values('k'),
+                set([3, 4, 5])
+            )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                store.attribute_values('method'),
+                set(['direct', 'indirect'])
+            )
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                store.attribute_values('method', include_none=True),
+                set(['direct', 'indirect', None])
+            )
+
+
 
     def test_delete_result(self):
         

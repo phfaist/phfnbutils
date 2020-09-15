@@ -216,10 +216,18 @@ class Hdf5StoreResultsAccessor:
             if want_this(grpiface):
                 yield grpiface
 
-    def attribute_values(self, attribute_name):
+    def attribute_values(self, attribute_name, *, include_none=False):
+        if self.realm not in self._store:
+            return set()
         grp_results = self._store[self.realm]
-        return set( _unpack_attr_val(grp.attrs[attribute_name])
-                    for grp in (grp_results[key] for key in grp_results.keys()) )
+        return set(
+            _unpack_attr_val(attval)
+            for attval in (
+                    grp.attrs.get(attribute_name, None)
+                    for grp in (grp_results[key] for key in grp_results.keys())
+            )
+            if include_none or attval is not None
+        )
         # vals = set()
         # for key in grp_results.keys():
         #     grp = grp_results[key]
