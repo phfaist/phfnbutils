@@ -463,6 +463,14 @@ def _showvalue(result, short=False):
 
 
 
+def _call_with_accepted_kwargs(fun, kwargs):
+    sig = inspect.signature(fun)
+    fun_args = set( sig.parameters.keys() )
+    return fun(**{k: v
+                  for k, v in kwargs.items()
+                  if k in fun_args})
+
+
 class ComputeAndStore:
     def __init__(self, fn, store_filename, *,
                  realm=None, fixed_attributes=None, info=None,
@@ -542,7 +550,11 @@ class ComputeAndStore:
         logger.debug("result: %s", _ShowValueShort(result))
         logger.info("Got result for %s [runtime: %s seconds]", _ShowValueShort(attributes), dt)
 
-        the_info = dict(info)
+        the_info = {}
+        for info_k, info_v in info.items():
+            if callable(info_v):
+                info_v = _call_with_accepted_kwargs(info_v, attributes)
+            the_info[info_k] = info_v
         the_info.update(timethisresult=dt)
         with self._get_store() as store:
             store.store_result(attributes, result, info=the_info)

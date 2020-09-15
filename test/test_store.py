@@ -309,7 +309,6 @@ class TestStore(unittest.TestCase):
             )
 
 
-
     def test_delete_result(self):
         
         storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
@@ -438,7 +437,8 @@ class TestComputeAndStore(unittest.TestCase):
         compute_something = ComputeAndStore(fn, storefn,
                                             realm='somethings',
                                             fixed_attributes={'state': 'GHZ'},
-                                            info={'n': 10})
+                                            info={'n': 10,
+                                                  'two_times_a': lambda a: 2*a })
 
 
         record_calls.clear()
@@ -469,9 +469,9 @@ class TestComputeAndStore(unittest.TestCase):
             self.assertEqual(record_calls, ['compute_something(1,1,None)'])
 
         with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
-            self.assertEqual( set([ r['res']
+            self.assertEqual( set([ (r['res'], r['two_times_a'])
                                     for r in store.iterate_results() ]) ,
-                              set([ 112233, 998877 ]) )
+                              set([ (112233, 22), (998877, 198) ]) )
 
 
     def test_in_multiprocessing(self):
