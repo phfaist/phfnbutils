@@ -163,10 +163,12 @@ class TestStore(unittest.TestCase):
 
 
         # nothing stored in this realm yet
-        with self.assertRaises(KeyError):
-            with Hdf5StoreResultsAccessor(storefn, realm='alternate_universe') as store:
-                values = set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
-                              for obj in store.iterate_results()])
+        with Hdf5StoreResultsAccessor(storefn, realm='alternate_universe') as store:
+            self.assertEqual(
+                set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                     for obj in store.iterate_results()]),
+                set()
+            )
 
         # store something in a different realm
         with Hdf5StoreResultsAccessor(storefn, realm='alternate_universe') as store:
@@ -190,6 +192,17 @@ class TestStore(unittest.TestCase):
                                   for obj in store.iterate_results()]),
                              set([(3,1,'GHZ',2.0), (4,2,'GHZ',0.5)]))
 
+
+    def test_iterate_results_when_empty(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'temptest.hdf5')
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                [(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'])
+                 for obj in store.iterate_results()],
+                []
+            )
 
     def test_iterate_results_inconsistent_keys(self):
 

@@ -190,6 +190,11 @@ class Hdf5StoreResultsAccessor:
                 self._filelock = None
 
     def iterate_results(self, *, predicate=None, **kwargs):
+
+        if self.realm not in self._store:
+            # no results registered yet, nothing to yield
+            return
+
         grp_results = self._store[self.realm]
 
         predicate_attrs = None
