@@ -455,7 +455,7 @@ def _showvalue(result, short=False):
         # print short version of ndarray
         with np.printoptions(precision=4,threshold=8,linewidth=9999,):
             return str(result)
-    if isinstance(result, (float,)) or np.issubdtype(np.dtype(type(result)), np.floating):
+    if isinstance(result, (float,)) or np.issubdtype(type(result), np.floating):
         return "%.4g"%(result)
     if result is None or isinstance(result, (int, bool, str, bytes)):
         return str(result)
