@@ -594,8 +594,8 @@ class ComputeAndStore:
             (kwargs, dict(fixed_attributes, **kwargs))
             for kwargs in list_of_kwargs
         ]
-        logger.debug("requested %s(%r)", fn_name,
-                     _ShowValueShort(list_of_kwargs_and_attributes, lambda x: [y[1] for y in x]))
+        #logger.debug("requested %s(%r)", fn_name,
+        #             _ShowValueShort(list_of_kwargs_and_attributes, lambda x: [y[1] for y in x]))
 
         with self._get_store() as store:
             new_list_of_kwargs_and_attributes = []
