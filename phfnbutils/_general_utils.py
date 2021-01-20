@@ -75,9 +75,9 @@ def parallel_apply_func_on_input_combinations(
         # chunk inputs into sizes of chunksize
         list_of_inputs = [ list_of_inputs[i:i+chunksize]
                            for i in range(0, len(list_of_inputs), chunksize) ]
+        #logger.debug("Chunked inputs, new list of inputs = %r", list_of_inputs)
         # and now, reset the 'chunksize' argument to multiprocessing.Pool.imap_unordered()
         chunksize = None
-
 
     if sequential_execution:
         for inp in tqdm(list_of_inputs, total=total_num_inputs):

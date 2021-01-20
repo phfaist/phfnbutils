@@ -653,25 +653,6 @@ class ComputeAndStore:
 
             all_results.append_result(attributes, the_info, result)
 
-        # if isinstance(result, MultipleResults):
-        #     with self._get_store() as store:
-        #         for res_attrs, res_info_v, res in result.results:
-        #             try:
-        #                 the_res_attrs = dict(attributes)
-        #                 the_res_attrs.update(**res_attrs)
-        #                 the_res_info = dict(the_info)
-        #                 if res_info_v:
-        #                     the_res_info.update(**res_info_v)
-        #                 store.store_result(the_res_attrs, res, info=the_res_info)
-        #             except Exception as e:
-        #                 logger.warning(
-        #                     f"Couldn't save result {attributes}, {res_attrs}; "
-        #                     f"[info {the_info}, {res_info_v}] [result {res}]: {e}"
-        #                 )
-        # else:
-        #     with self._get_store() as store:
-        #         store.store_result(attributes, result, info=the_info)
-        
         # store results
         with self._get_store() as store:
             for attributes, the_info, result in all_results.results:

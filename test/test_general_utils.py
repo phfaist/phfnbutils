@@ -180,3 +180,43 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
                     (1, 20),
                 ])
             )
+
+
+    def test_chunked_with_ComputeAndStore(self):
+
+        def fn(factor, a):
+            return {'res_value': factor*a}
+
+        from phfnbutils.store import Hdf5StoreResultsAccessor, ComputeAndStore
+
+        with tempfile.TemporaryDirectory() as temp_dir_name:
+            storefn = os.path.join(temp_dir_name, 'tempstore.hdf5')
+
+            compute_something_and_store = ComputeAndStore(fn, storefn)
+
+            parallel_apply_func_on_input_combinations(
+                compute_something_and_store,
+                [ [1,2,3,4,5], [7,8] ],
+                chunksize=8,
+            )
+
+            with Hdf5StoreResultsAccessor(storefn) as store:
+                self.assertEqual( set([ (r['a'], r['res_value'], r['factor'])
+                                        for r in store.iterate_results() ]) ,
+                                  set([ (7,  7, 1),
+                                        (7, 14, 2),
+                                        (7, 21, 3),
+                                        (7, 28, 4),
+                                        (7, 35, 5),
+                                        (8,  8, 1),
+                                        (8, 16, 2),
+                                        (8, 24, 3),
+                                        (8, 32, 4),
+                                        (8, 40, 5), ]) )
+
+
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    unittest.main()
