@@ -436,6 +436,25 @@ class NoResultException(Exception):
     pass
 
 
+class MultipleResults:
+    def __init__(self, results=None):
+        # results = [
+        #   ({attrs1...}, {infoattrs1...}, <result1>),
+        #   ({attrs2...}, {infoattrs2...}, <result2>),
+        #   ...
+        # ]
+        # arttrsN are merged with "global" attributes (items
+        # in attrsN take precedence)
+        if results is not None:
+            self.results = results #[ (attrs, info, result) for (attrs, info, result) in results ]
+        else:
+            self.results = []
+
+    def append_result(self, attrs, info, result):
+        self.results.append( (attrs, info, result) )
+
+    
+
 
 class _ShowValueShort:
     def __init__(self, result):
@@ -469,6 +488,7 @@ def _call_with_accepted_kwargs(fun, kwargs):
     return fun(**{k: v
                   for k, v in kwargs.items()
                   if k in fun_args})
+
 
 
 class ComputeAndStore:
@@ -578,8 +598,25 @@ class ComputeAndStore:
                 info_v = _call_with_accepted_kwargs(info_v, attributes)
             the_info[info_k] = info_v
         the_info.update(timethisresult=dt)
-        with self._get_store() as store:
-            store.store_result(attributes, result, info=the_info)
+
+        if isinstance(result, MultipleResults):
+            with self._get_store() as store:
+                for res_attrs, res_info_v, res in result.results:
+                    try:
+                        the_res_attrs = dict(attributes)
+                        the_res_attrs.update(**res_attrs)
+                        the_res_info = dict(the_info)
+                        if res_info_v:
+                            the_res_info.update(**res_info_v)
+                        store.store_result(the_res_attrs, res, info=the_res_info)
+                    except Exception as e:
+                        logger.warning(
+                            f"Couldn't save result {attributes}, {res_attrs}; "
+                            f"[info {the_info}, {res_info_v}] [result {res}]: {e}"
+                        )
+        else:
+            with self._get_store() as store:
+                store.store_result(attributes, result, info=the_info)
 
         # signal to caller that we've computed a new result -- but this
         # return value is probably ignored anyways

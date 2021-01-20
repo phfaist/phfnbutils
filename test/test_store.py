@@ -11,7 +11,8 @@ import logging
 import numpy as np
 
 from phfnbutils.store import (
-    _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore, NoResultException
+    _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore,
+    MultipleResults, NoResultException
 )
 
 
@@ -570,6 +571,45 @@ class TestComputeAndStore(unittest.TestCase):
             self.assertEqual( set([ r['res']
                                     for r in store.iterate_results() ]) ,
                               set([ 112233, 445566, 778899 ]) )
+
+
+
+    def test_compute_and_store_multiple_results(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        def fn(a):
+            mr = MultipleResults([
+                ({'factor': 1}, None, {'res_value': a},),
+                ({'factor': 2}, None, {'res_value': 2*a},),
+                ({'factor': 3}, {'factor_is_four': False}, {'res_value': 3*a},),
+            ])
+            mr.append_result( {'factor': 4}, {'factor_is_four': True}, {'res_value': 4*a} )
+            return mr
+
+        compute_something = ComputeAndStore(fn, storefn,
+                                            realm='somethings',
+                                            fixed_attributes={'state': 'GHZ'},
+                                            info={'n': 10,
+                                                  'ten_times_a': lambda a: 10*a })
+
+        compute_something( (7,) )
+        compute_something( (8,) )
+
+        with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
+            #for r in store.iterate_results():
+            #    print(r)
+            self.assertEqual( set([ (r['a'], r['res_value'], r['factor'], r['ten_times_a'])
+                                    for r in store.iterate_results() ]) ,
+                              set([ (7,  7, 1, 70),
+                                    (7, 14, 2, 70),
+                                    (7, 21, 3, 70),
+                                    (7, 28, 4, 70),
+                                    (8,  8, 1, 80),
+                                    (8, 16, 2, 80),
+                                    (8, 24, 3, 80),
+                                    (8, 32, 4, 80), ]) )
+
 
 
 
