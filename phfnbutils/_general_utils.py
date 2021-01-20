@@ -27,10 +27,12 @@ def _streams_init_pool():
 #
 def parallel_apply_func_on_input_combinations(
         fn,
-        args_values_list,
-        *,
+        *args_values_lists,
+        #
         processes=None,
-        shuffle_tasks=True
+        shuffle_tasks=True,
+        sequential_execution=True,
+        chunksize=None,
 ):
     # Notes: (convert to docstring, TODO)
     #
@@ -46,14 +48,36 @@ def parallel_apply_func_on_input_combinations(
     from tqdm.auto import tqdm
     import numpy as np
 
-    list_of_inputs = itertools.product(*args_values_list)
+    args_values_lists = list(args_values_lists)
+
+    list_of_inputs = itertools.chain.from_iterable(
+        (itertools.product(*args_values_list) for args_values_list in args_values_lists)
+    )
     if shuffle_tasks:
         list_of_inputs = list(list_of_inputs)
         random.shuffle(list_of_inputs) # shuffle in place
-    with multiprocessing.Pool(processes=processes, initializer=_streams_init_pool) as pool:
+        total_num_inputs = len(list_of_inputs)
+    else:
+        total_num_inputs = sum(
+            int(np.prod( [len(x) for x in args_values_list] ))
+            for args_values_list in args_values_lists
+        )
+
+    if sequential_execution:
+        for inp in tqdm(list_of_inputs, total=total_num_inputs):
+            fn(inp)
+        return
+
+    mp_pool_imap_kwargs = {}
+    if chunksize:
+        mp_pool_imap_kwargs.update(chunksize=chunksize)
+
+    mp_pool_kwargs = dict(processes=processes, initializer=_streams_init_pool)
+
+    with multiprocessing.Pool(**mp_pool_kwargs) as pool:
         for _ in tqdm(
-                pool.imap_unordered( fn, list_of_inputs ),
-                total=int(np.prod( [len(x) for x in args_values_list] ))
+                pool.imap_unordered( fn, list_of_inputs, **mp_pool_imap_kwargs ),
+                total=total_num_inputs
         ):
             pass
 
