@@ -451,34 +451,59 @@ class MultipleResults:
             self.results = []
 
     def append_result(self, attrs, info, result):
-        self.results.append( (attrs, info, result) )
+        # if result is itself a MultipleResults instance, merge results.
+        if isinstance(result, MultipleResults):
+            for res_attrs, res_info_v, res in result.results:
+                try:
+                    the_res_attrs = dict(attrs)
+                    the_res_attrs.update(**res_attrs)
+                    the_res_info = dict(info)
+                    if res_info_v:
+                        the_res_info.update(**res_info_v)
+                    self.results.append( (the_res_attrs, the_res_info, res,) )
+                except Exception as e:
+                    logger.warning(
+                        f"Couldn't save result {attrs}, {res_attrs}; "
+                        f"[info {info}, {res_info_v}] [result {res}]: {e}"
+                    )
+        else:
+            self.results.append( (attrs, info, result) )
 
-    
 
 
 class _ShowValueShort:
-    def __init__(self, result):
-        self.result = result
-    def __str__(self):
-        return _showvalue(self.result)
-    def __repr__(self):
-        return repr(self.result)
+    def __init__(self, value, process_value=None):
+        self.value = value
+        self.process_value = process_value
 
-def _showvalue(result, short=False):
-    if isinstance(result, dict) and not short:
+    def _processed_value(self):
+        if self.process_value is not None:
+            return self.process_value(self.value)
+        else:
+            return self.value
+
+    def __str__(self):
+        return _showvalue(self._processed_value())
+
+    def __repr__(self):
+        return repr(self._processed_value())
+
+
+def _showvalue(value, short=False):
+    if isinstance(value, dict) and not short:
         return '{' + ",".join(
             "{}={}".format(k, _showvalue(v, short=True))
-            for k,v in result.items()
+            for k,v in value.items()
         ) + '}'
-    if short and isinstance(result, (np.ndarray,)):
+    if short and isinstance(value, (np.ndarray,)):
         # print short version of ndarray
         with np.printoptions(precision=4,threshold=8,linewidth=9999,):
-            return str(result)
-    if isinstance(result, (float,)) or np.issubdtype(type(result), np.floating):
-        return "%.4g"%(result)
-    if result is None or isinstance(result, (int, bool, str, bytes)):
-        return str(result)
-    return '<{}>'.format(result.__class__.__name__)
+            return str(value)
+    if isinstance(value, (float,)) or np.issubdtype(type(value), np.floating):
+        return "%.4g"%(value)
+    if value is None or isinstance(value, (int, bool, str, bytes)):
+        return str(value)
+    return '<{}>'.format(value.__class__.__name__)
 
 
 
@@ -529,7 +554,25 @@ class ComputeAndStore:
             self.logger = logger
 
 
+    def _prepare_inputargs_as_kwargs(self, inputargs):
+        decoded_inputargs = inputargs
+        if self.decode_inputargs is not None:
+            decoded_inputargs = self.decode_inputargs(inputargs)
+        if isinstance(decoded_inputargs, dict):
+            kwargs = decoded_inputargs
+        else:
+            if len(decoded_inputargs) != len(self.fn_arg_names):
+                raise ValueError("Can't match (decoded) input arguments %r to function parameters %r"
+                                 % (decoded_inputargs, self.fn_arg_names))
+            kwargs = dict(zip(self.fn_arg_names, decoded_inputargs))
+
+        return kwargs
+
+
     def __call__(self, inputargs):
+        return self.call_with_inputs( [inputargs] )
+
+    def call_with_inputs(self, list_of_inputargs):
         fn = self.fn
         fn_name = self.fn_name
         fn_arg_names = self.fn_arg_names
@@ -543,82 +586,99 @@ class ComputeAndStore:
         # we might have to decode the inputargs, in case they have attribute
         # values encoded in some way (e.g. dependent attributes zipped together)
         kwargs = None
-        decoded_inputargs = inputargs
-        if self.decode_inputargs is not None:
-            decoded_inputargs = self.decode_inputargs(inputargs)
-        if isinstance(decoded_inputargs, dict):
-            kwargs = decoded_inputargs
-        else:
-            if len(decoded_inputargs) != len(fn_arg_names):
-                raise ValueError("Can't match (decoded) input arguments %r to function parameters %r"
-                                 % (decoded_inputargs, fn_arg_names))
-            kwargs = dict(zip(fn_arg_names, decoded_inputargs))
 
-        attributes = dict(fixed_attributes)
-        attributes.update(kwargs)
-        logger.debug("requested %s(%r)", fn_name, kwargs)
+        list_of_kwargs = [ self._prepare_inputargs_as_kwargs(inputargs)
+                           for inputargs in list_of_inputargs ]
+
+        list_of_kwargs_and_attributes = [
+            (kwargs, dict(fixed_attributes, **kwargs))
+            for kwargs in list_of_kwargs
+        ]
+        logger.debug("requested %s(%r)", fn_name,
+                     _ShowValueShort(list_of_kwargs_and_attributes, lambda x: [y[1] for y in x]))
 
         with self._get_store() as store:
-            if not force_recompute and store.has_result(attributes):
-                logger.debug("Results for %s already present, not repeating computation",
-                             _ShowValueShort(attributes))
+            new_list_of_kwargs_and_attributes = []
+            for kwargs, attributes in list_of_kwargs_and_attributes:
+                if not force_recompute and store.has_result(attributes):
+                    logger.debug("Results for %s already present, not repeating computation",
+                                 _ShowValueShort(attributes))
+                else:
+                    new_list_of_kwargs_and_attributes.append( (kwargs,attributes,) )
+            if not new_list_of_kwargs_and_attributes:
+                logger.debug("There's nothing to compute.")
                 return
 
-        logger.info("computing for attributes = %s", _ShowValueShort(attributes))
+            list_of_kwargs_and_attributes = new_list_of_kwargs_and_attributes
 
-        tr = {}
-        result = None
-        try:
-            with phfnbutils.TimeThis(tr, silent=True):
-                # call the function that actually computes the result
-                result = fn(**kwargs)
-        except NoResultException as e:
-            logger.warning(
-                "No result (NoResultException): %s  [for %s after %s seconds]",
-                e, _ShowValueShort(attributes), tr['timethisresult'].dt,
-            )
-            return False
-        except Exception as e:
-            logger.error("Exception while computing result!", exc_info=True)
-            return False
+        all_results = MultipleResults()
 
-        dt = tr['timethisresult'].dt
+        for kwargs, attributes in list_of_kwargs_and_attributes:
 
-        if result is None:
-            logger.warning("No result (returned None) for %s, after %s seconds",
-                           _ShowValueShort(attributes), dt)
-            return False
+            logger.info("computing for attributes = %s", _ShowValueShort(attributes))
 
-        logger.debug("result: %s", _ShowValueShort(result))
-        logger.info("Got result for %s [runtime: %s seconds]", _ShowValueShort(attributes), dt)
+            tr = {}
+            result = None
+            try:
+                with phfnbutils.TimeThis(tr, silent=True):
+                    # call the function that actually computes the result
+                    result = fn(**kwargs)
+            except NoResultException as e:
+                logger.warning(
+                    "No result (NoResultException): %s  [for %s after %s seconds]",
+                    e, _ShowValueShort(attributes), tr['timethisresult'].dt,
+                )
+                return False
+            except Exception as e:
+                logger.error("Exception while computing result!", exc_info=True)
+                return False
 
-        the_info = {}
-        for info_k, info_v in info.items():
-            if callable(info_v):
-                info_v = _call_with_accepted_kwargs(info_v, attributes)
-            the_info[info_k] = info_v
-        the_info.update(timethisresult=dt)
+            dt = tr['timethisresult'].dt
 
-        if isinstance(result, MultipleResults):
-            with self._get_store() as store:
-                for res_attrs, res_info_v, res in result.results:
-                    try:
-                        the_res_attrs = dict(attributes)
-                        the_res_attrs.update(**res_attrs)
-                        the_res_info = dict(the_info)
-                        if res_info_v:
-                            the_res_info.update(**res_info_v)
-                        store.store_result(the_res_attrs, res, info=the_res_info)
-                    except Exception as e:
-                        logger.warning(
-                            f"Couldn't save result {attributes}, {res_attrs}; "
-                            f"[info {the_info}, {res_info_v}] [result {res}]: {e}"
-                        )
-        else:
-            with self._get_store() as store:
+            if result is None:
+                logger.warning("No result (returned None) for %s, after %s seconds",
+                               _ShowValueShort(attributes), dt)
+                return False
+
+            logger.debug("result: %s", _ShowValueShort(result))
+            logger.info("Got result for %s [runtime: %s seconds]",
+                        _ShowValueShort(attributes), dt)
+
+            the_info = {}
+            for info_k, info_v in info.items():
+                if callable(info_v):
+                    info_v = _call_with_accepted_kwargs(info_v, attributes)
+                the_info[info_k] = info_v
+            the_info.update(timethisresult=dt)
+
+            all_results.append_result(attributes, the_info, result)
+
+        # if isinstance(result, MultipleResults):
+        #     with self._get_store() as store:
+        #         for res_attrs, res_info_v, res in result.results:
+        #             try:
+        #                 the_res_attrs = dict(attributes)
+        #                 the_res_attrs.update(**res_attrs)
+        #                 the_res_info = dict(the_info)
+        #                 if res_info_v:
+        #                     the_res_info.update(**res_info_v)
+        #                 store.store_result(the_res_attrs, res, info=the_res_info)
+        #             except Exception as e:
+        #                 logger.warning(
+        #                     f"Couldn't save result {attributes}, {res_attrs}; "
+        #                     f"[info {the_info}, {res_info_v}] [result {res}]: {e}"
+        #                 )
+        # else:
+        #     with self._get_store() as store:
+        #         store.store_result(attributes, result, info=the_info)
+        
+        # store results
+        with self._get_store() as store:
+            for attributes, the_info, result in all_results.results:
                 store.store_result(attributes, result, info=the_info)
 
-        # signal to caller that we've computed a new result -- but this
+
+        # signal to caller that we've computed (a) new result(s) -- but this
         # return value is probably ignored anyways
         return True
 

@@ -21,6 +21,8 @@ def _streams_init_pool():
     sys.stdout.write(".\b") # need to send *something* over stdout to use ipython's display()
     sys.stdout.flush()
 
+
+
 #
 # Tiny utility for applying a function using multiprocessing.Pool across a
 # cartesian product of input arguments, with progress bar
@@ -62,6 +64,20 @@ def parallel_apply_func_on_input_combinations(
             int(np.prod( [len(x) for x in args_values_list] ))
             for args_values_list in args_values_lists
         )
+
+
+    # if chunksize is given, and if the function object supports chunked calls,
+    # then do that.
+    if chunksize is not None and hasattr(fn, 'call_with_inputs'):
+        if not isinstance(list_of_inputs, list):
+            list_of_inputs = list(list_of_inputs)
+        fn = fn.call_with_inputs
+        # chunk inputs into sizes of chunksize
+        list_of_inputs = [ list_of_inputs[i:i+chunksize]
+                           for i in range(0, len(list_of_inputs), chunksize) ]
+        # and now, reset the 'chunksize' argument to multiprocessing.Pool.imap_unordered()
+        chunksize = None
+
 
     if sequential_execution:
         for inp in tqdm(list_of_inputs, total=total_num_inputs):

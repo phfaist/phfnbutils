@@ -2,6 +2,8 @@ import unittest
 import tempfile
 import os.path
 
+import itertools
+
 import multiprocessing
 
 import h5py
@@ -574,6 +576,39 @@ class TestComputeAndStore(unittest.TestCase):
 
 
 
+    def test_compute_and_store_multiinputs(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        def fn(factor, a):
+            return {'res_value': factor*a}
+
+        compute_something = ComputeAndStore(fn, storefn,
+                                            realm='somethings',
+                                            fixed_attributes={'state': 'GHZ'},
+                                            info={'n': 10,
+                                                  'ten_times_a': lambda a: 10*a })
+
+        compute_something.call_with_inputs( itertools.product([1,2,3,4,5], [7,8,]) )
+
+        with Hdf5StoreResultsAccessor(storefn, realm='somethings') as store:
+            #for r in store.iterate_results():
+            #    print(r)
+            self.assertEqual( set([ (r['a'], r['res_value'], r['factor'], r['ten_times_a'])
+                                    for r in store.iterate_results() ]) ,
+                              set([ (7,  7, 1, 70),
+                                    (7, 14, 2, 70),
+                                    (7, 21, 3, 70),
+                                    (7, 28, 4, 70),
+                                    (7, 35, 5, 70),
+                                    (8,  8, 1, 80),
+                                    (8, 16, 2, 80),
+                                    (8, 24, 3, 80),
+                                    (8, 32, 4, 80),
+                                    (8, 40, 5, 80), ]) )
+
+
+
     def test_compute_and_store_multiple_results(self):
 
         storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
@@ -585,6 +620,8 @@ class TestComputeAndStore(unittest.TestCase):
                 ({'factor': 3}, {'factor_is_four': False}, {'res_value': 3*a},),
             ])
             mr.append_result( {'factor': 4}, {'factor_is_four': True}, {'res_value': 4*a} )
+            mr.append_result( {}, {'factor_is_four': False},
+                              MultipleResults([ ({'factor': 5}, None, {'res_value': 5*a}), ]) )
             return mr
 
         compute_something = ComputeAndStore(fn, storefn,
@@ -605,10 +642,12 @@ class TestComputeAndStore(unittest.TestCase):
                                     (7, 14, 2, 70),
                                     (7, 21, 3, 70),
                                     (7, 28, 4, 70),
+                                    (7, 35, 5, 70),
                                     (8,  8, 1, 80),
                                     (8, 16, 2, 80),
                                     (8, 24, 3, 80),
-                                    (8, 32, 4, 80), ]) )
+                                    (8, 32, 4, 80),
+                                    (8, 40, 5, 80), ]) )
 
 
 
