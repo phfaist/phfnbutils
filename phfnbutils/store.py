@@ -325,6 +325,13 @@ class Hdf5StoreResultsAccessor:
         for key in keys_to_delete:
             if dry_run:
                 logger.info("Delete results %r (dry run)", key)
+                def _do_get_result(key):
+                    # use "self" outside inner class
+                    return _Hdf5GroupProxyObject(self._store[key])
+                class get_all_attrs_str:
+                    def __str__(self):
+                        return repr(_do_get_result(key).all_attrs())
+                logger.debug("with properties: %r -> %s", key, get_all_attrs_str())
             else:
                 del self._store[key]
                 logger.info("Deleted results %r", key)
