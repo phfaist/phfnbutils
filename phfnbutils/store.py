@@ -615,8 +615,8 @@ class ComputeAndStore:
                  info=None,
                  decode_inputargs=None,
                  multiple_attribute_values=None,
-                 force_recompute=False,
-                 skip_store=False,
+                 force_recompute=None,
+                 skip_store=None,
                  logger=None):
         self.fn = fn
 
@@ -679,14 +679,14 @@ class ComputeAndStore:
         self.force_recompute = False
         if hasattr(fn, 'force_recompute'):
             self.force_recompute = fn.force_recompute
-        if force_recompute:
-            self.force_recompute = True
+        if force_recompute is not None:
+            self.force_recompute = self.force_recompute or force_recompute
 
         self.skip_store = False
         if hasattr(fn, 'skip_store'):
             self.skip_store = fn.skip_store
-        if not skip_store:
-            self.skip_store = False
+        if skip_store is not None:
+            self.skip_store = self.skip_store and skip_store
 
         if logger is None:
             self.logger = logging.getLogger(__name__ + '.ComputeAndStore')
