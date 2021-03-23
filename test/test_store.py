@@ -13,7 +13,7 @@ import logging
 import numpy as np
 
 from phfnbutils.store import (
-    _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore,
+    _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore, FnComputer,
     MultipleResults, NoResultException,
     flatten_attribute_value_lists
 )
@@ -666,9 +666,12 @@ class TestComputeAndStore(unittest.TestCase):
                 ({'operation': '*'}, None, {'operation_result': a * b}),
             ])
 
-        compute_something = ComputeAndStore(fn, storefn,
-                                            fixed_attributes={'fixattr1': 'one'},
-                                            info={'info1': 10,})
+        compute_something = ComputeAndStore(
+            fn, storefn,
+            fixed_attributes={'fixattr1': 'one'},
+            multiple_attribute_values={'operation': ['+','*']},
+            info={'info1': 10,}
+        )
 
         record_calls.clear()
         compute_something( (3,8) )
@@ -725,6 +728,41 @@ class TestComputeAndStore(unittest.TestCase):
         record_calls.clear()
         compute_something( (1,2) )
         self.assertEqual(record_calls, [])
+
+    def test_multi_2(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        record_calls = []
+
+        class fnclass(FnComputer):
+            def __call__(self, a, b, operation):
+                record_calls.append( (a, b, operation) )
+                return MultipleResults([
+                    ({'operation': '+'}, None, {'operation_result': a + b}),
+                    ({'operation': '*'}, None, {'operation_result': a * b}),
+                ])
+
+
+        compute_something = ComputeAndStore(
+            fnclass(), storefn,
+            fixed_attributes={'fixattr1': 'one'},
+            multiple_attribute_values={'operation': ['+','*']},
+            info={'info1': 10,}
+        )
+
+        record_calls.clear()
+        compute_something( (3,8) )
+        self.assertEqual(record_calls, [(3,8,['+','*'])])
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            #for r in store.iterate_results():
+            #    print(r)
+            self.assertEqual( set([ (r['a'], r['b'], r['operation'], r['operation_result'])
+                                    for r in store.iterate_results() ]) ,
+                              set([ (3, 8, '+', 11),
+                                    (3, 8, '*', 24),
+                              ]) )
 
 
 

@@ -519,9 +519,9 @@ def _call_with_accepted_kwargs(fun, kwargs):
 
 class FnComputer:
     decode_inputargs = None
-    fixed_attributes = []
-    multiple_attribute_values = []
-    info = {}
+    fixed_attributes = None
+    multiple_attribute_values = None
+    info = None
     force_recompute = False
 
     def __call__(self):
