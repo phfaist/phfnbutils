@@ -26,6 +26,8 @@ tqdm = "^4.48.2"
 pytest = "^6.0"
 jupyter = "^1.0.0"
 ipykernel = "^5.3.4"
+sphinx = "^3.5.3"
+sphinx-issues = "^1.2.0"
 
 [build-system]
 requires = ["poetry>=0.12"]

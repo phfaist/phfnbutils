@@ -10,11 +10,11 @@ import logging
 
 import numpy as np
 
-from phfnbutils import parallel_apply_func_on_input_combinations
-
-
 import multiprocessing
 
+
+
+from phfnbutils.mp import parallel_apply_func_on_input_combinations
 
 # ------------------------------------------------------------------------------
 

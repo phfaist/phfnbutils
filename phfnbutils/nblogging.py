@@ -94,21 +94,21 @@ class HTMLFormatter(logging.Formatter):
     
        Specify HTML code to include after the main log message, on a
        per-log-level basis.  This is again a dictionary that works like the
-       :py:`icons` attribute.
+       :py:attr:`icons` attribute.
 
 
     .. py:attribute:: css_par_styles
 
        CSS style code to set on the main ``<p>`` HTML element for this log
        message, on a per-log-level basis.  This is again a dictionary that works
-       like the :py:`icons` attribute.
+       like the :py:attr:`icons` attribute.
 
     .. py:attribute:: css_message_styles
 
        CSS style code to set on the message's ``<span>`` HTML element for this
        log message, on a per-log-level basis.  This element includes the message
        only, and neither leading or trailer sections.  This attribute is again a
-       dictionary that works like the :py:`icons` attribute.
+       dictionary that works like the :py:attr:`icons` attribute.
 
 
     .. py:attribute:: css_time
@@ -122,7 +122,7 @@ class HTMLFormatter(logging.Formatter):
        same CSS code is used for all log levels, and this attribute should
        simply be a string.
 
-    .. py:attribute:: css_exception
+    .. py:attribute:: css_stacktrace
     
        CSS code to set on ``<pre>`` elements that display a stack trace.  The
        same CSS code is used for all log levels, and this attribute should

@@ -516,43 +516,167 @@ def _call_with_accepted_kwargs(fun, kwargs):
 
 
 
+
+class FnComputer:
+    decode_inputargs = None
+    fixed_attributes = []
+    multiple_attribute_values = []
+    info = {}
+    force_recompute = False
+
+    def __call__(self):
+        raise RuntimeError("You need to reimplement the __call__() function")
+
+
 class ComputeAndStore:
+    """
+    Wraps a function `fn` that computes something potentially expensive with the
+    necessary code to perform the computation only if it doesn't already exist
+    in the data storage described by `store_filename` and `realm` and designed
+    to be managed by a :py:class:`HDF5StoreResultsAccessor`.
+    
+    To determine whether the computation must be run, and to store the result
+    after the computation if it was carried out, the attributes that
+    characterize the associated result in the
+    :py:class:`HDF5StoreResultsAccessor` are determined as follows (for use with
+    :py:meth:`HDF5StoreResultsAccessor.has_result()` and
+    :py:meth:`HDF5StoreResultsAccessor.store_result()`).  The function's named
+    arguments are considered as attributes, and they are merged with the given
+    attribute dictionary `fixed_attributes`.
+
+    The return value of the function (usually a dictionary) is then stored using
+    a :py:class:`HDF5StoreAccessor` instance in the given filename and realm,
+    with the associated attributes.  The function may also return an instance of
+    :py:class:`MultipleResults`—see more on this topic below.
+
+    The `info` argument can be a dictionary of values to store alongside with
+    the result, but that do not contribute to the identification of the result
+    instance (see :py:meth:`HDF5StoreAccessor.store_result()`'s `info=` keyword
+    argument).
+
+    It is possible to "decode" some arguments of `fn()` if you would like the
+    attribute value in the store file to have a different format or
+    representation as the value actually passed on to `fn()`.  Use the
+    `decode_inputargs()` for this purpose.  It is given the tuple of input
+    arguments as-is (without any 'multiple-attributes' arguments—see below), and
+    is supposed to return the arguments to send to `fn()` instead (either as a
+    tuple or as a kwargs dictionary).  If a tuple is returned, it must preserve
+    the order and number of the arguments.
+
+    The results storage file `store_filename` is accessed with a
+    :py:class:`HDF5StoreResultsAccessor` instance.  The instance is only created
+    momentarily to check whether the results exist in the storage, and again if
+    necessary to store the result into the cache.  In this way multiple
+    instances of this function can run in different processes without locking
+    out the results storage file.
+
+    Messages are logged to the given `logger` instance (see python's
+    :py:mod:`logging` mechanism), or to a default logger.
+
+
+    **Computing functions with multiple attribute values at in one function
+    call:**
+
+    Sometimes we want to compute multiple result objects in one go, especially
+    if they share some common intermediate steps.  In such cases, the function
+    should return a :py:class:`MultipleResults` instance that collects the
+    different result objects along with their different attributes values.  The
+    attributes specified in each object in `MultipleResults` are merged with the
+    function's arguments and with the `fixed_attributes`.
+
+    When the function returns multiple result objects, then `ComputeAndStore`
+    needs additional information in order to determine if a computation needs to
+    run, and if so, which of those multiple results need to be computed.  Use
+    the `multiple_attribute_values` field to this effect.  This field should be
+    a list of dictionaries, or a dictionary containing a list in one of its
+    values, that specify any additional attribute(s) and the values associated
+    with the results that the function is expected to return.  These values are
+    used to check the existence of the result objects in the store.
+
+    If the function accepts a keyword argument associated with a "multiple
+    result attributes", then a list of all the values that we need to compute
+    (i.e., that are not in the store) is provided to the function via that
+    keyword argument.  If multiple such arguments are accepted, then all these
+    keyword arguments `kw1`, `kw2`, ... are given a list of the same length,
+    such that `{kw1=kw1[j], kw2=kw2[j], ...}` for `j=0,1,...` describe the
+    result objects that need to be computed.
+    """
     def __init__(self, fn, store_filename, *,
                  realm=None,
                  fixed_attributes=None,
                  info=None,
                  decode_inputargs=None,
+                 multiple_attribute_values=None,
                  force_recompute=False,
                  logger=None):
         self.fn = fn
-        self.fn_name = fn.__name__
-        fn_sig = inspect.signature(fn)
+
+        if isinstance(fn, FnComputer):
+            self.fn_name = fn.__class__.__name__
+            fn_sig = inspect.signature(fn.__call__)
+        else:
+            self.fn_name = fn.__name__
+            fn_sig = inspect.signature(fn)
         self.fn_arg_names = list( fn_sig.parameters.keys() )
 
         self.store_filename = store_filename
         self.realm = realm
 
-        if fixed_attributes is None:
-            self.fixed_attributes = {}
-        else:
-            self.fixed_attributes = fixed_attributes
-        if info is None:
-            self.info = {}
-        else:
-            self.info = info
+        self.fixed_attributes = {}
+        if getattr(fn, 'fixed_attributes', None) is not None:
+            self.fixed_attributes.update(fn.fixed_attributes)
+        if fixed_attributes is not None:
+            self.fixed_attributes.update(fixed_attributes)
 
-        if decode_inputargs is None:
-            self.decode_inputargs = None
-        else:
+        self.info = {}
+        if getattr(fn, 'info', None) is not None:
+            self.info.update(fn.info)
+        if info is not None:
+            self.info.update(info)
+
+        self.decode_inputargs = None
+        if getattr(fn, 'decode_inputargs', None) is not None:
+            self.decode_inputargs = fn.decode_inputargs
+        if decode_inputargs is not None:
+            if self.decode_inputargs is not None:
+                raise ValueError("decode_inputargs=... specified both in FnComputer class "
+                                 "and as argument to ComputeAndStore()")
             self.decode_inputargs = decode_inputargs
 
-        self.force_recompute = force_recompute
+        self.multiple_attribute_values = None
+        if getattr(fn, 'multiple_attribute_values', None) is not None:
+            self.multiple_attribute_values = fn.multiple_attribute_values
+        if multiple_attribute_values is not None:
+            if self.multiple_attribute_values is not None:
+                raise ValueError("multiple_attribute_values=... specified both in FnComputer "
+                                 "class and as argument to ComputeAndStore()")
+            self.multiple_attribute_values = multiple_attribute_values
+        if self.multiple_attribute_values is None:
+            self.multiple_attribute_values = []
+        # go through multiple_attribute_values, and replace dictionary-of-list
+        # by list-of-dictionaries, i.e. {'a': [1, 2]} -> [{'a': 1}, {'a': 2}]
+        self.multiple_attribute_values = \
+            flatten_attribute_value_lists(self.multiple_attribute_values)
+        self.multiple_attribute_all_keys = \
+            list(set( itertools.chain.from_iterable(
+                    d.keys() for d in self.multiple_attribute_values
+                ) ))
+
+        #print(f"{self.multiple_attribute_values=}")
+
+        self.fn_attribute_names = [k for k in self.fn_arg_names
+                                   if k not in self.multiple_attribute_all_keys ]
+
+        self.force_recompute = False
+        if hasattr(fn, 'force_recompute'):
+            self.force_recompute = fn.force_recompute
+        if force_recompute:
+            self.force_recompute = True
 
         if logger is None:
             self.logger = logging.getLogger(__name__ + '.ComputeAndStore')
         else:
             self.logger = logger
-
 
     def _prepare_inputargs_as_kwargs(self, inputargs):
         decoded_inputargs = inputargs
@@ -561,10 +685,11 @@ class ComputeAndStore:
         if isinstance(decoded_inputargs, dict):
             kwargs = decoded_inputargs
         else:
-            if len(decoded_inputargs) != len(self.fn_arg_names):
-                raise ValueError("Can't match (decoded) input arguments %r to function parameters %r"
-                                 % (decoded_inputargs, self.fn_arg_names))
-            kwargs = dict(zip(self.fn_arg_names, decoded_inputargs))
+            if len(decoded_inputargs) != len(self.fn_attribute_names):
+                raise ValueError("Can't match (decoded) input arguments %r to "
+                                 "function parameters %r"
+                                 % (decoded_inputargs, self.fn_attribute_names))
+            kwargs = dict(zip(self.fn_attribute_names, decoded_inputargs))
 
         return kwargs
 
@@ -573,12 +698,6 @@ class ComputeAndStore:
         return self.call_with_inputs( [inputargs] )
 
     def call_with_inputs(self, list_of_inputargs):
-        fn = self.fn
-        fn_name = self.fn_name
-        fn_arg_names = self.fn_arg_names
-        fixed_attributes = self.fixed_attributes
-        force_recompute = self.force_recompute
-        info = self.info
         logger = self.logger
 
         import phfnbutils # TimeThis
@@ -591,38 +710,93 @@ class ComputeAndStore:
                            for inputargs in list_of_inputargs ]
 
         list_of_kwargs_and_attributes = [
-            (kwargs, dict(fixed_attributes, **kwargs))
+            (kwargs, dict(self.fixed_attributes, **kwargs))
             for kwargs in list_of_kwargs
         ]
-        #logger.debug("requested %s(%r)", fn_name,
+        #logger.debug("requested %s(%r)", self.fn_name,
         #             _ShowValueShort(list_of_kwargs_and_attributes, lambda x: [y[1] for y in x]))
 
+
         with self._get_store() as store:
-            new_list_of_kwargs_and_attributes = []
+
+            # def is_need_to_recompute(attributes):
+            #     if self.force_recompute:
+            #         return True
+            #     return not store.has_result(attributes)
+            #
+            # def which_attributes_need_recompute
+
+
+            list_of_kwargs_and_attributes_and_multiattribs = []
+
             for kwargs, attributes in list_of_kwargs_and_attributes:
-                if not force_recompute and store.has_result(attributes):
-                    logger.debug("Results for %s already present, not repeating computation",
-                                 _ShowValueShort(attributes))
-                else:
-                    new_list_of_kwargs_and_attributes.append( (kwargs,attributes,) )
-            if not new_list_of_kwargs_and_attributes:
+                
+                multiple_attribute_values = self.multiple_attribute_values
+                if not multiple_attribute_values:
+                    multiple_attribute_values = [ {} ]
+
+                # here we use multiple_attribute_values also for functions that
+                # don't explicitly have any multiple_attribute_values.  In
+                # thoses cases an empty list means that there is nothing to
+                # compute, and a list containing only an empty dictionary means
+                # that we should compute that function.
+
+                if not self.force_recompute:
+                    multiple_attribute_values = [
+                        m
+                        for m in multiple_attribute_values
+                        if not store.has_result(dict(attributes, **m))
+                    ]
+                
+                if not multiple_attribute_values:
+                    # nothing to compute even for non-multiple-attributed
+                    # functions, see comment above
+                    logger.debug("Results for %s [%s] already present, not repeating computation",
+                                 _ShowValueShort(attributes),
+                                 _ShowValueShort(self.multiple_attribute_values))
+                    continue
+
+                multiattribkwargs = {
+                    k: [m.get(k, None) for m in multiple_attribute_values]
+                    for k in self.multiple_attribute_all_keys
+                }
+
+                list_of_kwargs_and_attributes_and_multiattribs.append(
+                    (kwargs, attributes, multiattribkwargs)
+                )
+
+                # if not self.multiple_attribute_values:
+                #     if is_need_to_recompute(attributes):
+                # def have_all_necessary_results_in_store():
+                #     if not self.multiple_attribute_values:
+                #         return store.has_result(attributes)
+                #     return 
+                # if not self.force_recompute and have_all_necessary_results_in_store():
+                #     logger.debug("Results for %s already present, not repeating computation",
+                #                  _ShowValueShort(attributes))
+                # else:
+                #     new_list_of_kwargs_and_attributes.append( (kwargs,attributes,) )
+            if not list_of_kwargs_and_attributes_and_multiattribs:
                 logger.debug("There's nothing to compute.")
                 return
 
-            list_of_kwargs_and_attributes = new_list_of_kwargs_and_attributes
-
         all_results = MultipleResults()
 
-        for kwargs, attributes in list_of_kwargs_and_attributes:
+        for kwargs, attributes, multiattribkwargs \
+            in list_of_kwargs_and_attributes_and_multiattribs:
 
-            logger.info("computing for attributes = %s", _ShowValueShort(attributes))
+            logger.info("computing for attributes = %s  [with multi-attributes = %s]",
+                        _ShowValueShort(attributes), _ShowValueShort(multiattribkwargs))
+
+            run_kwargs = dict(kwargs, **{k: v for (k,v) in multiattribkwargs.items()
+                                         if k in self.fn_arg_names})
 
             tr = {}
             result = None
             try:
                 with phfnbutils.TimeThis(tr, silent=True):
                     # call the function that actually computes the result
-                    result = fn(**kwargs)
+                    result = self.fn(**run_kwargs)
             except NoResultException as e:
                 logger.warning(
                     "No result (NoResultException): %s  [for %s after %s seconds]",
@@ -645,7 +819,7 @@ class ComputeAndStore:
                         _ShowValueShort(attributes), dt)
 
             the_info = {}
-            for info_k, info_v in info.items():
+            for info_k, info_v in self.info.items():
                 if callable(info_v):
                     info_v = _call_with_accepted_kwargs(info_v, attributes)
                 the_info[info_k] = info_v
@@ -668,4 +842,42 @@ class ComputeAndStore:
         if self.realm is not None:
             store_kwargs.update(realm=self.realm)
         return Hdf5StoreResultsAccessor(self.store_filename, **store_kwargs)
+
+
+
+
+
+def flatten_attribute_value_lists(alist):
+    # {'a': [1, 2]} -> [{'a': 1}, {'a': 2}] for all keys in all listed dictionaries
+    if isinstance(alist, dict):
+        alist = [alist]
+    need_another_loop = True
+    while need_another_loop:
+        #print(f"Looping to flatten attribute value lists, {alist=}")
+        newalist = []
+        need_another_loop = False
+        for a in alist:
+            #print(f"Inspecting {a=}")
+            assert isinstance(a, dict) # should be dict here
+            k, v = next( ((k, v) for (k,v) in a.items() if isinstance(v, list)),
+                         (None,None) )
+            if k is not None:
+                #print(f"Expanding {k=}: {v=}")
+                need_another_loop = True
+                # expand list value into list of dictionaries with each value
+                def _updated_k_with_vitem(vitem):
+                    d = dict(a)
+                    d[k] = vitem
+                    return d
+                expanded = [
+                    _updated_k_with_vitem(vitem)
+                    for vitem in v
+                ]
+                #print(f"{expanded=}") # DEBUG
+                newalist += expanded
+            else:
+                newalist += [a] # ok, keep this dict as is
+        alist = newalist
+    return newalist
+
 

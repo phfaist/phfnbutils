@@ -14,7 +14,8 @@ import numpy as np
 
 from phfnbutils.store import (
     _Hdf5GroupProxyObject, Hdf5StoreResultsAccessor, ComputeAndStore,
-    MultipleResults, NoResultException
+    MultipleResults, NoResultException,
+    flatten_attribute_value_lists
 )
 
 
@@ -563,7 +564,8 @@ class TestComputeAndStore(unittest.TestCase):
         compute_something2 = ComputeAndStore(fn, storefn,
                                             realm='foobar2',
                                             fixed_attributes={'state': 'bliss'},
-                                            decode_inputargs=lambda a: decode_inputargs(a, use_dict=True),
+                                            decode_inputargs=\
+                                             lambda a: decode_inputargs(a, use_dict=True),
                                             info={'n': 10})
 
         for input in list_of_inputs:
@@ -649,6 +651,108 @@ class TestComputeAndStore(unittest.TestCase):
                                     (8, 32, 4, 80),
                                     (8, 40, 5, 80), ]) )
 
+
+    # test multi-attrib functions
+    def test_multi_0(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        record_calls = []
+
+        def fn(a, b):
+            record_calls.append( (a, b) )
+            return MultipleResults([
+                ({'operation': '+'}, None, {'operation_result': a + b}),
+                ({'operation': '*'}, None, {'operation_result': a * b}),
+            ])
+
+        compute_something = ComputeAndStore(fn, storefn,
+                                            fixed_attributes={'fixattr1': 'one'},
+                                            info={'info1': 10,})
+
+        record_calls.clear()
+        compute_something( (3,8) )
+        self.assertEqual(record_calls, [(3,8)])
+
+        record_calls.clear()
+        compute_something( (1,2) )
+        self.assertEqual(record_calls, [(1,2)])
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            #for r in store.iterate_results():
+            #    print(r)
+            self.assertEqual( set([ (r['a'], r['b'], r['operation'], r['operation_result'])
+                                    for r in store.iterate_results() ]) ,
+                              set([ (3, 8, '+', 11),
+                                    (3, 8, '*', 24),
+                                    (1, 2, '+', 3),
+                                    (1, 2, '*', 2),
+                              ]) )
+
+    def test_multi_1(self):
+
+        storefn = os.path.join(self.temp_dir_name, 'tempstore.hdf5')
+
+        record_calls = []
+
+        def fn(a, b, *, operation):
+            record_calls.append( (a, b, operation) )
+            return MultipleResults([
+                ({'operation': '+'}, None, {'operation_result': a + b}),
+                ({'operation': '*'}, None, {'operation_result': a * b}),
+            ])
+
+        compute_something = ComputeAndStore(
+            fn, storefn,
+            fixed_attributes={'fixattr1': 'one'},
+            multiple_attribute_values={'operation': ['+','*']},
+            info={'info1': 10,}
+        )
+
+        record_calls.clear()
+        compute_something( (3,4) )
+        self.assertEqual(record_calls, [(3,4,['+','*'])])
+
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            store.store_result(dict(fixattr1='one', a=1, b=2, operation='*'),
+                               {'operation_result': 2})
+
+        # If '*' is already in store, it should only request '+'
+        record_calls.clear()
+        compute_something( (1,2) )
+        self.assertEqual(record_calls, [(1,2,['+'])])
+
+        record_calls.clear()
+        compute_something( (1,2) )
+        self.assertEqual(record_calls, [])
+
+
+
+
+
+    def test_flatten_attribute_value_lists(self):
+
+        self.assertEqual(
+            flatten_attribute_value_lists([]),
+            []
+        )
+        self.assertEqual(
+            flatten_attribute_value_lists({'a': 1, 'b': 2}),
+            [{'a': 1, 'b': 2}]
+        )
+        self.assertEqual(
+            flatten_attribute_value_lists([{'a': 1, 'b': 2}]),
+            [{'a': 1, 'b': 2}]
+        )
+        self.assertEqual(
+            flatten_attribute_value_lists({'a': 1, 'b': [3, 4]}),
+            [{'a': 1, 'b': 3}, {'a': 1, 'b': 4}]
+        )
+        self.assertEqual(
+            flatten_attribute_value_lists({'a': [1,2], 'b': [3, 4]}),
+            [{'a': 1, 'b': 3}, {'a': 1, 'b': 4},
+             {'a': 2, 'b': 3}, {'a': 2, 'b': 4}]
+        )
 
 
 
