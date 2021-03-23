@@ -530,6 +530,7 @@ class FnComputer:
     multiple_attribute_values = None
     info = None
     force_recompute = False
+    skip_store = False
 
     def __call__(self):
         raise RuntimeError("You need to reimplement the __call__() function")
@@ -615,6 +616,7 @@ class ComputeAndStore:
                  decode_inputargs=None,
                  multiple_attribute_values=None,
                  force_recompute=False,
+                 skip_store=False,
                  logger=None):
         self.fn = fn
 
@@ -680,6 +682,12 @@ class ComputeAndStore:
         if force_recompute:
             self.force_recompute = True
 
+        self.skip_store = False
+        if hasattr(fn, 'skip_store'):
+            self.skip_store = fn.skip_store
+        if not skip_store:
+            self.skip_store = False
+
         if logger is None:
             self.logger = logging.getLogger(__name__ + '.ComputeAndStore')
         else:
@@ -708,6 +716,11 @@ class ComputeAndStore:
         logger = self.logger
 
         import phfnbutils # TimeThis
+
+        if self.skip_store:
+            # offer friendly warning to make sure the user didn't forget to
+            # unset skip_store before a very long computation
+            logger.warning("`skip_store` is set to True, results will not be stored at the end!")
 
         # we might have to decode the inputargs, in case they have attribute
         # values encoded in some way (e.g. dependent attributes zipped together)
@@ -835,10 +848,10 @@ class ComputeAndStore:
             all_results.append_result(attributes, the_info, result)
 
         # store results
-        with self._get_store() as store:
-            for attributes, the_info, result in all_results.results:
-                store.store_result(attributes, result, info=the_info)
-
+        if not self.skip_store:
+            with self._get_store() as store:
+                for attributes, the_info, result in all_results.results:
+                    store.store_result(attributes, result, info=the_info)
 
         # signal to caller that we've computed (a) new result(s) -- but this
         # return value is probably ignored anyways
