@@ -33,7 +33,7 @@ def parallel_apply_func_on_input_combinations(
         #
         processes=None,
         shuffle_tasks=True,
-        sequential_execution=True,
+        sequential_execution=False,
         chunksize=None,
 ):
     # Notes: (convert to docstring, TODO)
