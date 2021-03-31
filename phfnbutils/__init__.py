@@ -3,14 +3,9 @@
 # This determines the package version number.
 __version__ = "0.2.0"
 
-
 from ._general_utils import (
     TimeThis, TimeThisResult,
 )
-
-#from ._mp_utils import (
-#    parallel_apply_func_on_input_combinations,
-#)
 
 # lazy import of mp module, keeps old code running
 def parallel_apply_func_on_input_combinations(*args, **kwargs):
