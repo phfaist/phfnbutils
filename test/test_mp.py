@@ -31,6 +31,13 @@ class CallsRecorder:
         self.called_args.append(arg)
 
 
+
+def fn_helper(factor, a):
+    return {'res_value': factor*a}
+
+
+
+
 class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
 
     def test_0(self):
@@ -184,15 +191,12 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
 
     def test_chunked_with_ComputeAndStore(self):
 
-        def fn(factor, a):
-            return {'res_value': factor*a}
-
         from phfnbutils.store import Hdf5StoreResultsAccessor, ComputeAndStore
 
         with tempfile.TemporaryDirectory() as temp_dir_name:
             storefn = os.path.join(temp_dir_name, 'tempstore.hdf5')
 
-            compute_something_and_store = ComputeAndStore(fn, storefn)
+            compute_something_and_store = ComputeAndStore(fn_helper, storefn)
 
             parallel_apply_func_on_input_combinations(
                 compute_something_and_store,

@@ -252,6 +252,8 @@ class TestStore(unittest.TestCase):
             store.store_result( {'n':  12, 'k': 5, 'state': 'GHZ', 'method': 'indirect'},
                                 { 'result1': np.ones((3,4)),
                                   'kkk': np.array([5,], dtype=np.int32),
+                                  'result_string': 'Hello there 🙌',
+                                  'result_bytes': b'012345\x00-6789',
                                   'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
                                 info={'dt': 4} )
 
@@ -260,6 +262,21 @@ class TestStore(unittest.TestCase):
             self.assertEqual(set([(obj['k'],obj['dt'],obj['state'],obj['variables']['Z'],)
                                   for obj in store.iterate_results(method=None)]),
                              set([(3,1,'GHZ',2.0,)]))
+
+        # can store & retrieve strings
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                next(store.iterate_results(n=12,k=5,state='GHZ'))['result_string']
+                .tobytes().decode('utf-8'),
+                'Hello there 🙌'
+            )
+        # can store & retrieve bytes
+        with Hdf5StoreResultsAccessor(storefn) as store:
+            self.assertEqual(
+                next(store.iterate_results(n=12,k=5,state='GHZ'))['result_bytes']
+                .tobytes(),
+                b'012345\x00-6789'
+            )
 
         # can query with predicate w/ array-vs-scalar matching
         def predicate_kkk(kkk):

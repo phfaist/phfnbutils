@@ -61,7 +61,8 @@ class _Hdf5GroupProxyObject:
 
     def __getitem__(self, key):
         def keyerror():
-            raise KeyError("No key {} in hdf5 group {!r} or its attributes".format(key, self.grp))
+            raise KeyError("No key {} in hdf5 group {!r} or its attributes"
+                           .format(key, self.grp))
         return self.get(key, None, _default_action=keyerror)
 
     def _unpack_attr_val(self, att_val):
@@ -86,7 +87,8 @@ class _Hdf5GroupProxyObject:
         for k in self.keys_children():
             v = self.grp[k]
             ds[k] = '<{}>'.format(type(v).__name__)
-        return 'HDF5 group {' + ', '.join('{}: {}'.format(k,vstr) for k,vstr in ds.items()) + '}'
+        return ('HDF5 group {' +
+                ', '.join('{}: {}'.format(k,vstr) for k,vstr in ds.items()) + '}')
 
     def hdf5_group(self):
         """
@@ -137,9 +139,11 @@ def _normalize_attribute_value_global(
     if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
         return _normalize_attribute_value_string(value.isoformat())
     if isinstance(value, (datetime.timedelta,)):
-        return _normalize_attribute_value_string("total_seconds={:.06g}".format(value.total_seconds()))
+        return _normalize_attribute_value_string("total_seconds={:.06g}"
+                                                 .format(value.total_seconds()))
 
-    raise ValueError("Cannot encode {!r} for HDF5 attribute storage, unknown type".format(value))
+    raise ValueError("Cannot encode {!r} for HDF5 attribute storage, unknown type"
+                     .format(value))
 
 
 
@@ -254,7 +258,8 @@ class Hdf5StoreResultsAccessor:
 
         if key in self._store:
             if forbid_overwrite:
-                raise ValueError("key {!r} already exists in {}, not overwriting".format(key, self.realm))
+                raise ValueError("key {!r} already exists in {}, not overwriting"
+                                 .format(key, self.realm))
             del self._store[key]
 
         grp = self._store.create_group(key)
@@ -293,10 +298,21 @@ class Hdf5StoreResultsAccessor:
                      or np.issubdtype(np.dtype(type(v)), np.integer) \
                      or np.issubdtype(np.dtype(type(v)), np.floating):
                     dset = grp.create_dataset(k, data=v)
+                elif isinstance(v, str):
+                    # difficult to support strings in HDF5 -- see
+                    # https://docs.h5py.org/en/stable/strings.html
+                    #
+                    # we use " np.void(utf8 bytes) " stored in an attribute as
+                    # it looks like it's the safest
+                    grp.attrs[k] = np.void(v.encode('utf-8'))
+                elif isinstance(v, bytes):
+                    # store raw bytes
+                    grp.attrs[k] = np.void(v)
                 elif isinstance(v, (datetime.date, datetime.time, datetime.datetime)):
                     grp.attrs[k] = v.isoformat().encode('ascii')
                 elif isinstance(v, (datetime.timedelta,)):
-                    grp.attrs[k] = ("timedelta(seconds={:.06g})".format(v.total_seconds())).encode('ascii')
+                    grp.attrs[k] = ("timedelta(seconds={:.06g})"
+                                    .format(v.total_seconds())).encode('ascii')
                 else:
                     has_error = ValueError("Can't save object {!r}, unknown type".format(v))
                     # continue saving other stuff
@@ -391,7 +407,8 @@ class Hdf5StoreResultsAccessor:
                 rename_keys.append( (key, newkey) )
 
             if this_set_attributes:
-                logger.debug("Will set attributes on newkey {}: {!r}".format(newkey, this_set_attributes))
+                logger.debug("Will set attributes on newkey {}: {!r}"
+                             .format(newkey, this_set_attributes))
                 set_attributes[newkey] = this_set_attributes
 
         if not rename_keys and not set_attributes:
