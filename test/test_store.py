@@ -244,10 +244,12 @@ class TestStore(unittest.TestCase):
         with Hdf5StoreResultsAccessor(storefn) as store:
             # store.store_result(attributes, result, ...)
             store.store_result( {'n':  12, 'k': 3, 'state': 'GHZ'},
-                                { 'result1': np.zeros((3,4)), 'variables': {'R': np.arange(12), 'Z': 2.0} },
+                                { 'result1': np.zeros((3,4)),
+                                  'variables': {'R': np.arange(12), 'Z': 2.0} },
                                 info={'dt': 1} )
             store.store_result( {'n':  12, 'k': 4, 'state': 'GHZ', 'method': 'direct'},
-                                { 'result1': np.ones((3,4)), 'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
+                                { 'result1': np.ones((3,4)),
+                                  'variables': {'R': 4*np.arange(12), 'Z': 0.5} },
                                 info={'dt': 2} )
             store.store_result( {'n':  12, 'k': 5, 'state': 'GHZ', 'method': 'indirect'},
                                 { 'result1': np.ones((3,4)),

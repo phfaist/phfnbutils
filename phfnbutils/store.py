@@ -260,6 +260,7 @@ class Hdf5StoreResultsAccessor:
             if forbid_overwrite:
                 raise ValueError("key {!r} already exists in {}, not overwriting"
                                  .format(key, self.realm))
+            logger.debug("Overwriting key %r in %s", key, self.realm)
             del self._store[key]
 
         grp = self._store.create_group(key)
@@ -303,8 +304,12 @@ class Hdf5StoreResultsAccessor:
                     # https://docs.h5py.org/en/stable/strings.html
                     #
                     # we use " np.void(utf8 bytes) " stored in an attribute as
-                    # it looks like it's the safest
+                    # it looks like it's the safest.  NOTE: You need to access
+                    # the string via result['string_field'].tobytes().decode('utf-8')
                     grp.attrs[k] = np.void(v.encode('utf-8'))
+                    logger.warning("Storing string as UTF-8 opaque bytes for field ‘%s’.  Use "
+                                   "“result['%s'].tobytes().decode('utf-8')” when reading "
+                                   "out the string.", k, k)
                 elif isinstance(v, bytes):
                     # store raw bytes
                     grp.attrs[k] = np.void(v)
