@@ -298,6 +298,8 @@ class Hdf5StoreResultsAccessor:
                 elif isinstance(v, (np.ndarray, int, float)) \
                      or np.issubdtype(np.dtype(type(v)), np.integer) \
                      or np.issubdtype(np.dtype(type(v)), np.floating):
+                    # Pass on any numpy array as is to h5py.  Also store floats
+                    # and ints directly
                     dset = grp.create_dataset(k, data=v)
                 elif isinstance(v, str):
                     # difficult to support strings in HDF5 -- see
@@ -313,6 +315,9 @@ class Hdf5StoreResultsAccessor:
                 elif isinstance(v, bytes):
                     # store raw bytes
                     grp.attrs[k] = np.void(v)
+                    logger.warning("Storing bytes as opaque type for field ‘%s’.  Use "
+                                   "“result['%s'].tobytes()” when reading "
+                                   "out the bytes again.", k, k)
                 elif isinstance(v, (datetime.date, datetime.time, datetime.datetime)):
                     grp.attrs[k] = v.isoformat().encode('ascii')
                 elif isinstance(v, (datetime.timedelta,)):

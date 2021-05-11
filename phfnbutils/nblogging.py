@@ -410,7 +410,8 @@ class HTMLHandler(logging.Handler):
             self.handleError(record)
 
 
-def setup(level=logging.DEBUG, *, no_debug_for=None, no_info_for=None, **kwargs):
+def setup(level=logging.DEBUG, *, no_debug_for=None, no_info_for=None,
+          use_html_handler=True, **kwargs):
     """
     Set up a basic logging environment and return a logger that you can use in
     the notebook.
@@ -423,7 +424,13 @@ def setup(level=logging.DEBUG, *, no_debug_for=None, no_info_for=None, **kwargs)
     or 'matplotlib'.  Similarly, with `no_info_for` you can specify a list of
     logger names whose levels should be set to `logging.WARNING`.
 
-    Any `kwargs` are passed on to the :py:class:`HTMLHandler`.
+    If `use_html_handler` is set to True, then a :py:class:`HTMLHandler` is
+    created and attached to the logging system for display in the jupyter
+    notebook.
+
+    Any `kwargs` are passed on to the :py:class:`HTMLHandler`.  Otherwise the
+    default handlers are used, or it's up to you to add a handler to the root
+    logger.
 
     This method can also be used in non-ipython environments, in which case a
     basic stderr logger is set up via ``logging.basicConfig()``.
@@ -455,11 +462,12 @@ def setup(level=logging.DEBUG, *, no_debug_for=None, no_info_for=None, **kwargs)
 
     rootlogger = logging.getLogger()
 
-    rootlogger.handlers = []
-    # automatically creates a HTMLFormatter instance
-    rootlogger.addHandler(HTMLHandler(**kwargs))
+    if use_html_handler:
+        rootlogger.handlers = []
+        # automatically creates a HTMLFormatter instance
+        rootlogger.addHandler(HTMLHandler(**kwargs))
 
-    rootlogger.setLevel(logging.DEBUG)
+    rootlogger.setLevel(level)
 
     fix_module_levels()
    
