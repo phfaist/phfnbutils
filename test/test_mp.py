@@ -14,7 +14,10 @@ import multiprocessing
 
 
 
-from phfnbutils.mp import parallel_apply_func_on_input_combinations
+from phfnbutils.mp import (
+    parallel_apply_func_on_input_combinations,
+    get_inputs_iterable
+)
 
 # ------------------------------------------------------------------------------
 
@@ -46,8 +49,8 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
             calls_recorder = CallsRecorder(manager.list())
             parallel_apply_func_on_input_combinations(
                 calls_recorder,
-                ['ABC', 'DEF'],
-                ['Z', 'Z'],
+                [['A','B','C'], ['D','E','F']],
+                [['Z'], ['Z']],
                 [[0,1], [10,20]],
                 shuffle_tasks=True,
                 sequential_execution=True,
@@ -100,8 +103,8 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
             calls_recorder = CallsRecorder(manager.list())
             parallel_apply_func_on_input_combinations(
                 calls_recorder,
-                ['ABC', 'DEF'],
-                ['Z', 'Z'],
+                [['A','B','C'], ['D','E','F']],
+                [['Z'], ['Z']],
                 [[0,1], [10,20]],
                 shuffle_tasks=False,
                 sequential_execution=True,
@@ -132,8 +135,8 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
             calls_recorder = CallsRecorder(manager.list())
             parallel_apply_func_on_input_combinations(
                 calls_recorder,
-                ['ABC', 'DEF'],
-                ['Z', 'Z'],
+                [['A','B','C'], ['D','E','F']],
+                [['Z'], ['Z']],
                 [[0,1], [10,20]],
                 shuffle_tasks=True,
             )
@@ -163,8 +166,8 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
             calls_recorder = CallsRecorder(manager.list())
             parallel_apply_func_on_input_combinations(
                 calls_recorder,
-                ['ABC', 'DEF'],
-                ['Z', 'Z'],
+                [['A','B','C'], ['D','E','F']],
+                [['Z'], ['Z']],
                 [[0,1], [10,20]],
                 chunksize=5,
             )
@@ -185,6 +188,38 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
                     (0, 20),
                     (1, 10),
                     (1, 20),
+                ])
+            )
+
+    def test_4(self):
+        
+        inputs = [
+            {'x': ['A', 'B', 'C'],
+             'y': ['D', 'E'],},
+            {'x': ['A', 'B', 'C'],
+             'y': 'FF'},
+        ]
+
+        with multiprocessing.Manager() as manager:
+            calls_recorder = CallsRecorder(manager.list())
+            parallel_apply_func_on_input_combinations(
+                calls_recorder,
+                inputs=inputs,
+            )
+            def _to_sorted_list(X):
+                return sorted(X, key=lambda x: (x['x'], x['y']))
+            self.assertEqual(
+                _to_sorted_list(list(calls_recorder.called_args)),
+                _to_sorted_list([
+                    dict(x='A', y='D'),
+                    dict(x='B', y='D'),
+                    dict(x='C', y='D'),
+                    dict(x='A', y='E'),
+                    dict(x='B', y='E'),
+                    dict(x='C', y='E'),
+                    dict(x='A', y='FF'),
+                    dict(x='B', y='FF'),
+                    dict(x='C', y='FF'),
                 ])
             )
 
@@ -218,6 +253,102 @@ class Test_parallel_apply_func_on_input_combinations(unittest.TestCase):
                                         (8, 32, 4),
                                         (8, 40, 5), ]) )
 
+
+
+class Test_get_inputs_iterable(unittest.TestCase):
+    def test_args_list(self):
+        total_n, iterable = get_inputs_iterable(args_values_lists=[[
+                [1, 2, 3],
+                ['A'],
+                ['alpha', 'beta'],
+            ]])
+        self.assertEqual(
+            list(iterable),
+            [
+                (1, 'A', 'alpha'),
+                (1, 'A', 'beta'),
+                (2, 'A', 'alpha'),
+                (2, 'A', 'beta'),
+                (3, 'A', 'alpha'),
+                (3, 'A', 'beta'),
+            ]
+        )
+        self.assertEqual(total_n, 6)
+
+    def test_args_list_2(self):
+        total_n, iterable = get_inputs_iterable(args_values_lists=[[
+                [1, 2, 3],
+                ['A'],
+                ['alpha', 'beta'],
+            ]], shuffle_tasks=True)
+        self.assertEqual(
+            set(list(iterable)),
+            set([
+                (1, 'A', 'alpha'),
+                (1, 'A', 'beta'),
+                (2, 'A', 'alpha'),
+                (2, 'A', 'beta'),
+                (3, 'A', 'alpha'),
+                (3, 'A', 'beta'),
+            ])
+        )
+        self.assertEqual(total_n, 6)
+
+    def test_dicts_1(self):
+        total_n, iterable = get_inputs_iterable(inputs=[
+            {
+                'x': [1, 2, 3],
+                'y': ['A'],
+                'z': ['alpha', 'beta'],
+            },
+        ])
+        self.assertEqual(
+            list(iterable),
+            [
+                dict(x=1, y='A', z='alpha'),
+                dict(x=1, y='A', z='beta'),
+                dict(x=2, y='A', z='alpha'),
+                dict(x=2, y='A', z='beta'),
+                dict(x=3, y='A', z='alpha'),
+                dict(x=3, y='A', z='beta'),
+            ]
+        )
+        self.assertEqual(total_n, 6)
+
+    def test_dicts_2(self):
+        total_n, iterable = get_inputs_iterable(inputs=[
+            {
+                'x': [1, 2, 3],
+                'y': ['A'],
+                'z': ['alpha', 'beta'],
+            },
+            {
+                'x': 'x',
+                'y': 'y',
+                'z': 'z',
+            },
+            {
+                'x': [1, 2, 3],
+                'y': ['Z'],
+                'z': 'gamma',
+            },
+        ])
+        self.assertEqual(
+            list(iterable),
+            [
+                dict(x=1, y='A', z='alpha'),
+                dict(x=1, y='A', z='beta'),
+                dict(x=2, y='A', z='alpha'),
+                dict(x=2, y='A', z='beta'),
+                dict(x=3, y='A', z='alpha'),
+                dict(x=3, y='A', z='beta'),
+                dict(x='x', y='y', z='z'),
+                dict(x=1, y='Z', z='gamma'),
+                dict(x=2, y='Z', z='gamma'),
+                dict(x=3, y='Z', z='gamma'),
+            ]
+        )
+        self.assertEqual(total_n, 10)
 
 
 
