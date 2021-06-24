@@ -128,6 +128,13 @@ def parallel_apply_func_on_input_combinations(
     #   representing the cartesian product of input arguments must be flattened
     #   to a list, possibly using lots of memory if you have many input
     #   arguments with many values.
+    #
+    # NOTE: PLAN IS TO MAKE *args_values_lists OBSOLETE AND TO HAVE EVERYTHING
+    # IN `inputs=`.  Currently, `inputs=` only accepts lists of dictionaries,
+    # but we should change that so that elements in the list `inputs` can also
+    # be lists (input combinations) of lists (values for each keyword) [which is
+    # what the elements of `args_values_lists` are].
+    #
     
     from tqdm.auto import tqdm
 
